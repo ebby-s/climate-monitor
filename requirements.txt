@@ -1,0 +1,5 @@
+flask>=3.0
+adafruit-circuitpython-sht4x
+adafruit-circuitpython-veml7700
+sensirion-i2c-sgp4x
+sensirion-gas-index-algorithm

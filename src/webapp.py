@@ -7,13 +7,13 @@ from src.config import RECENT_LIMIT
 
 app = Flask(__name__)
 
-HTML = """
+HTML = r"""
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Sensor Dashboard</title>
+    <title>Climate Monitor</title>
     <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
     <style>
         :root {
@@ -30,88 +30,116 @@ HTML = """
             --green: #22c55e;
             --pink: #ec4899;
             --teal: #14b8a6;
+            --purple: #a855f7;
+            --yellow: #eab308;
         }
-
         * { box-sizing: border-box; }
-
         body {
             margin: 0;
-            font-family: Arial, sans-serif;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
             background: linear-gradient(180deg, #020617 0%, #0f172a 100%);
             color: var(--text);
         }
-
         .container {
             max-width: 1200px;
             margin: 0 auto;
             padding: 24px;
         }
-
         h1 {
-            margin: 0 0 8px 0;
-            font-size: 32px;
+            margin: 0 0 6px 0;
+            font-size: 28px;
         }
-
         .subtitle {
             color: var(--muted);
-            margin-bottom: 24px;
+            margin-bottom: 20px;
+            font-size: 14px;
+        }
+        .status-dot {
+            display: inline-block;
+            width: 10px; height: 10px;
+            background: var(--green);
+            border-radius: 50%;
+            margin-right: 8px;
+            box-shadow: 0 0 8px var(--green);
         }
 
         .cards {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
-            gap: 16px;
+            grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+            gap: 12px;
             margin-bottom: 24px;
         }
-
         .card {
             background: rgba(17, 24, 39, 0.95);
             border: 1px solid var(--border);
-            border-radius: 16px;
-            padding: 18px;
+            border-radius: 12px;
+            padding: 16px;
         }
-
         .card h3 {
-            margin: 0 0 10px 0;
-            font-size: 14px;
+            margin: 0 0 8px 0;
+            font-size: 12px;
             color: var(--muted);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        .value {
+            font-size: 24px;
+            font-weight: 700;
         }
 
-        .value {
-            font-size: 28px;
-            font-weight: 700;
+        .tabs {
+            display: flex;
+            gap: 4px;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+        }
+        .tab-btn {
+            padding: 10px 20px;
+            border: 1px solid var(--border);
+            background: var(--panel2);
+            color: var(--text);
+            border-radius: 10px 10px 0 0;
+            cursor: pointer;
+            font-size: 14px;
+            border-bottom: none;
+            transition: background 0.2s;
+        }
+        .tab-btn.active {
+            background: var(--panel);
+            border-color: var(--border);
+            font-weight: 600;
+        }
+        .tab-btn:hover {
+            filter: brightness(1.1);
+        }
+        .tab-content {
+            display: none;
+        }
+        .tab-content.active {
+            display: block;
         }
 
         .chart-box {
             background: rgba(17, 24, 39, 0.95);
             border: 1px solid var(--border);
-            border-radius: 16px;
-            padding: 20px;
-            margin-bottom: 20px;
+            border-radius: 12px;
+            padding: 18px;
+            margin-bottom: 16px;
         }
-
         .chart-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 12px;
-            gap: 12px;
-            flex-wrap: wrap;
+            margin-bottom: 8px;
         }
-
         .chart-header h2 {
             margin: 0;
-            font-size: 20px;
+            font-size: 16px;
         }
-
         .chart-subtitle {
             color: var(--muted);
-            font-size: 13px;
+            font-size: 12px;
         }
-
         .plot {
             width: 100%;
-            height: 420px;
+            height: 360px;
         }
 
         .actions {
@@ -120,183 +148,231 @@ HTML = """
             gap: 12px;
             flex-wrap: wrap;
         }
-
         button {
-            padding: 11px 16px;
+            padding: 10px 16px;
             border: 1px solid var(--border);
             background: var(--panel2);
             color: var(--text);
             border-radius: 10px;
             cursor: pointer;
-            font-size: 14px;
+            font-size: 13px;
         }
-
-        button:hover {
-            filter: brightness(1.08);
-        }
-
+        button:hover { filter: brightness(1.1); }
         .shutdown-btn {
             background: #7f1d1d;
             border-color: #991b1b;
         }
-
         .note {
             margin-top: 12px;
             color: var(--muted);
-            font-size: 14px;
-        }
-
-        .status-dot {
-            display: inline-block;
-            width: 10px;
-            height: 10px;
-            background: var(--green);
-            border-radius: 50%;
-            margin-right: 8px;
-            box-shadow: 0 0 8px var(--green);
+            font-size: 13px;
         }
     </style>
 </head>
 <body>
 <div class="container">
-    <h1>Sensor Dashboard</h1>
+    <h1>Climate Monitor</h1>
     <div class="subtitle">
         <span class="status-dot"></span>
-        Power-friendly dashboard: recent raw data, 30-minute averages, and low-frequency trend plots precomputed on-device.
+        SHT-41 &middot; SGP41 &middot; VEML 7700 &middot; Recording every minute
     </div>
 
     <div class="cards">
         <div class="card">
-            <h3>Latest Temperature</h3>
-            <div class="value" id="latestTemp">-- °C</div>
+            <h3>Temperature</h3>
+            <div class="value" id="latestTemp">--</div>
         </div>
         <div class="card">
-            <h3>Latest Humidity</h3>
-            <div class="value" id="latestHum">-- %</div>
+            <h3>Humidity</h3>
+            <div class="value" id="latestHum">--</div>
         </div>
         <div class="card">
-            <h3>Latest Reading Time</h3>
-            <div class="value" id="latestTime" style="font-size:18px;">--</div>
+            <h3>VOC Index</h3>
+            <div class="value" id="latestVoc">--</div>
         </div>
         <div class="card">
-            <h3>Total Raw Points</h3>
+            <h3>NOx Index</h3>
+            <div class="value" id="latestNox">--</div>
+        </div>
+        <div class="card">
+            <h3>Light</h3>
+            <div class="value" id="latestLight">--</div>
+        </div>
+        <div class="card">
+            <h3>Total Points</h3>
             <div class="value" id="pointCount">0</div>
         </div>
     </div>
 
-    <div class="chart-box">
-        <div class="chart-header">
-            <div>
-                <h2>Temperature</h2>
-                <div class="chart-subtitle">Latest 240 raw readings</div>
-            </div>
-        </div>
-        <div id="tempPlot" class="plot"></div>
+    <div class="tabs">
+        <button class="tab-btn active" onclick="switchTab('tab-th')">Temp &amp; Humidity</button>
+        <button class="tab-btn" onclick="switchTab('tab-aq')">Air Quality</button>
+        <button class="tab-btn" onclick="switchTab('tab-light')">Ambient Light</button>
     </div>
 
-    <div class="chart-box">
-        <div class="chart-header">
-            <div>
-                <h2>Humidity</h2>
-                <div class="chart-subtitle">Latest 240 raw readings</div>
+    <div id="tab-th" class="tab-content active">
+        <div class="chart-box">
+            <div class="chart-header">
+                <h2>Temperature &mdash; Last 12 Hours</h2>
+                <div class="chart-subtitle">All 1-minute readings</div>
             </div>
+            <div id="tempRawPlot" class="plot"></div>
         </div>
-        <div id="humPlot" class="plot"></div>
+        <div class="chart-box">
+            <div class="chart-header">
+                <h2>Temperature &mdash; 30-Minute Averages by Day</h2>
+                <div class="chart-subtitle">One line per calendar day; brighter = more recent</div>
+            </div>
+            <div id="tempAvgPlot" class="plot"></div>
+        </div>
+        <div class="chart-box">
+            <div class="chart-header">
+                <h2>Temperature &mdash; 6-Hour Rolling Trend</h2>
+                <div class="chart-subtitle">Smoothed long-term trend over all recorded data</div>
+            </div>
+            <div id="tempTrendPlot" class="plot"></div>
+        </div>
+        <div class="chart-box">
+            <div class="chart-header">
+                <h2>Humidity &mdash; Last 12 Hours</h2>
+                <div class="chart-subtitle">All 1-minute readings</div>
+            </div>
+            <div id="humRawPlot" class="plot"></div>
+        </div>
+        <div class="chart-box">
+            <div class="chart-header">
+                <h2>Humidity &mdash; 30-Minute Averages by Day</h2>
+                <div class="chart-subtitle">One line per calendar day; brighter = more recent</div>
+            </div>
+            <div id="humAvgPlot" class="plot"></div>
+        </div>
+        <div class="chart-box">
+            <div class="chart-header">
+                <h2>Humidity &mdash; 6-Hour Rolling Trend</h2>
+                <div class="chart-subtitle">Smoothed long-term trend over all recorded data</div>
+            </div>
+            <div id="humTrendPlot" class="plot"></div>
+        </div>
     </div>
 
-    <div class="chart-box">
-        <div class="chart-header">
-            <div>
-                <h2>Temperature 30-Minute Average</h2>
-                <div class="chart-subtitle">24-hour view, midnight to midnight, one line per day. Brighter lines are more recent.</div>
+    <div id="tab-aq" class="tab-content">
+        <div class="chart-box">
+            <div class="chart-header">
+                <h2>VOC Index &mdash; Last 12 Hours</h2>
+                <div class="chart-subtitle">Volatile Organic Compounds (0-500); all 1-minute readings</div>
             </div>
+            <div id="vocRawPlot" class="plot"></div>
         </div>
-        <div id="tempAvgPlot" class="plot"></div>
+        <div class="chart-box">
+            <div class="chart-header">
+                <h2>VOC Index &mdash; 30-Minute Averages by Day</h2>
+                <div class="chart-subtitle">One line per calendar day; brighter = more recent</div>
+            </div>
+            <div id="vocAvgPlot" class="plot"></div>
+        </div>
+        <div class="chart-box">
+            <div class="chart-header">
+                <h2>VOC Index &mdash; 6-Hour Rolling Trend</h2>
+                <div class="chart-subtitle">Smoothed long-term trend over all recorded data</div>
+            </div>
+            <div id="vocTrendPlot" class="plot"></div>
+        </div>
+        <div class="chart-box">
+            <div class="chart-header">
+                <h2>NOx Index &mdash; Last 12 Hours</h2>
+                <div class="chart-subtitle">Nitrogen Oxides (0-500); all 1-minute readings</div>
+            </div>
+            <div id="noxRawPlot" class="plot"></div>
+        </div>
+        <div class="chart-box">
+            <div class="chart-header">
+                <h2>NOx Index &mdash; 30-Minute Averages by Day</h2>
+                <div class="chart-subtitle">One line per calendar day; brighter = more recent</div>
+            </div>
+            <div id="noxAvgPlot" class="plot"></div>
+        </div>
+        <div class="chart-box">
+            <div class="chart-header">
+                <h2>NOx Index &mdash; 6-Hour Rolling Trend</h2>
+                <div class="chart-subtitle">Smoothed long-term trend over all recorded data</div>
+            </div>
+            <div id="noxTrendPlot" class="plot"></div>
+        </div>
     </div>
 
-    <div class="chart-box">
-        <div class="chart-header">
-            <div>
-                <h2>Humidity 30-Minute Average</h2>
-                <div class="chart-subtitle">24-hour view, midnight to midnight, one line per day. Brighter lines are more recent.</div>
+    <div id="tab-light" class="tab-content">
+        <div class="chart-box">
+            <div class="chart-header">
+                <h2>Ambient Light &mdash; Last 12 Hours</h2>
+                <div class="chart-subtitle">All 1-minute readings in lux</div>
             </div>
+            <div id="lightRawPlot" class="plot"></div>
         </div>
-        <div id="humAvgPlot" class="plot"></div>
-    </div>
-
-    <div class="chart-box">
-        <div class="chart-header">
-            <div>
-                <h2>Temperature Slow Trend</h2>
-                <div class="chart-subtitle">6-hour rolling average sampled every 30 minutes to suppress rapid window-opening changes</div>
+        <div class="chart-box">
+            <div class="chart-header">
+                <h2>Ambient Light &mdash; 30-Minute Averages by Day</h2>
+                <div class="chart-subtitle">One line per calendar day; brighter = more recent</div>
             </div>
+            <div id="lightAvgPlot" class="plot"></div>
         </div>
-        <div id="tempTrendPlot" class="plot"></div>
-    </div>
-
-    <div class="chart-box">
-        <div class="chart-header">
-            <div>
-                <h2>Humidity Slow Trend</h2>
-                <div class="chart-subtitle">6-hour rolling average sampled every 30 minutes to suppress rapid window-opening changes</div>
+        <div class="chart-box">
+            <div class="chart-header">
+                <h2>Ambient Light &mdash; 6-Hour Rolling Trend</h2>
+                <div class="chart-subtitle">Smoothed long-term trend over all recorded data</div>
             </div>
+            <div id="lightTrendPlot" class="plot"></div>
         </div>
-        <div id="humTrendPlot" class="plot"></div>
     </div>
 
     <div class="actions">
-        <button onclick="resetAxes()">Reset Zoom</button>
+        <button onclick="resetAxes()">Reset All Zoom</button>
         <button class="shutdown-btn" onclick="shutdownPi()">Shutdown Raspberry Pi</button>
     </div>
-
     <div class="note">
-        The bottom two trend plots are precomputed from a 6-hour rolling average on 30-minute boundaries for low CPU and low power operation.
+        Charts auto-refresh every 60 seconds. Drag to zoom, double-click to reset individual axes.
     </div>
 </div>
 
 <script>
-function shutdownPi() {
-    if (confirm("Are you sure you want to shut down the Raspberry Pi?")) {
-        fetch('/shutdown', { method: 'POST' })
-            .then(() => alert("Shutting down..."));
-    }
+var _data = null;
+var _currentTab = 'tab-th';
+
+function switchTab(tabId) {
+    _currentTab = tabId;
+    document.querySelectorAll('.tab-btn').forEach(function(b) { b.classList.remove('active'); });
+    document.querySelectorAll('.tab-content').forEach(function(c) { c.classList.remove('active'); });
+    document.getElementById(tabId).classList.add('active');
+    var buttons = document.querySelectorAll('.tab-btn');
+    if (tabId === 'tab-th') buttons[0].classList.add('active');
+    else if (tabId === 'tab-aq') buttons[1].classList.add('active');
+    else buttons[2].classList.add('active');
+    setTimeout(function() {
+        Plotly.Plots.resize(document.querySelector('.tab-content.active .plot'));
+        if (_data) renderPlots(_data);
+    }, 50);
 }
 
-function formatDateTime(isoString) {
-    return new Date(isoString).toLocaleString();
+function shutdownPi() {
+    if (confirm("Shut down the Raspberry Pi?")) {
+        fetch('/shutdown', { method: 'POST' }).then(function() { alert("Shutting down..."); });
+    }
 }
 
 function getBounds(values, fallbackMin, fallbackMax) {
-    if (!values.length) {
-        return { min: fallbackMin, max: fallbackMax };
-    }
-
-    const min = Math.min(...values);
-    const max = Math.max(...values);
-    let padding = (max - min) * 0.1;
-
-    if (padding < 0.5) {
-        padding = 0.5;
-    }
-
-    return {
-        min: min - padding,
-        max: max + padding
-    };
+    if (!values.length) return { min: fallbackMin, max: fallbackMax };
+    var min = Math.min.apply(null, values);
+    var max = Math.max.apply(null, values);
+    var pad = Math.max((max - min) * 0.1, 0.5);
+    return { min: min - pad, max: max + pad };
 }
 
-function baseLayout(title, yTitle, yBounds) {
+function baseLayout(yTitle, yBounds) {
     return {
-        title: {
-            text: title,
-            font: { color: '#e5e7eb', size: 20 }
-        },
         paper_bgcolor: 'rgba(0,0,0,0)',
         plot_bgcolor: '#111827',
         font: { color: '#e5e7eb' },
-        margin: { l: 60, r: 20, t: 50, b: 60 },
+        margin: { l: 60, r: 20, t: 10, b: 50 },
         xaxis: {
-            title: 'Time',
             type: 'date',
             gridcolor: 'rgba(148,163,184,0.12)',
             zerolinecolor: 'rgba(148,163,184,0.12)',
@@ -313,16 +389,12 @@ function baseLayout(title, yTitle, yBounds) {
     };
 }
 
-function baseDayLayout(title, yTitle, yBounds) {
+function baseDayLayout(yTitle, yBounds) {
     return {
-        title: {
-            text: title,
-            font: { color: '#e5e7eb', size: 20 }
-        },
         paper_bgcolor: 'rgba(0,0,0,0)',
         plot_bgcolor: '#111827',
         font: { color: '#e5e7eb' },
-        margin: { l: 60, r: 20, t: 50, b: 60 },
+        margin: { l: 60, r: 20, t: 10, b: 50 },
         xaxis: {
             title: 'Time of Day',
             type: 'date',
@@ -341,222 +413,206 @@ function baseDayLayout(title, yTitle, yBounds) {
             color: '#94a3b8'
         },
         hovermode: 'closest',
-        legend: {
-            orientation: 'h',
-            y: 1.12,
-            x: 0
-        }
+        legend: { orientation: 'h', y: 1.08, x: 0 }
     };
 }
 
-const config = {
-    responsive: true,
-    displayModeBar: true,
-    scrollZoom: true
-};
-
-function resetAxes() {
-    ['tempPlot', 'humPlot', 'tempTrendPlot', 'humTrendPlot'].forEach(id => {
-        Plotly.relayout(id, {
-            'xaxis.autorange': true,
-            'yaxis.autorange': true
-        });
-    });
-
-    ['tempAvgPlot', 'humAvgPlot'].forEach(id => {
-        Plotly.relayout(id, {
-            'xaxis.range': ['2000-01-01T00:00:00', '2000-01-02T00:00:00'],
-            'yaxis.autorange': true
-        });
-    });
-}
+var CONFIG = { responsive: true, displayModeBar: true, scrollZoom: true };
 
 function rgba(hex, alpha) {
-    const h = hex.replace('#', '');
-    const bigint = parseInt(h, 16);
-    const r = (bigint >> 16) & 255;
-    const g = (bigint >> 8) & 255;
-    const b = bigint & 255;
-    return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+    var h = hex.replace('#', '');
+    var r = parseInt(h.substring(0,2), 16);
+    var g = parseInt(h.substring(2,4), 16);
+    var b = parseInt(h.substring(4,6), 16);
+    return 'rgba(' + r + ',' + g + ',' + b + ',' + alpha + ')';
 }
 
 function timeOfDayAnchor(isoString) {
-    const d = new Date(isoString);
-    const hh = String(d.getHours()).padStart(2, '0');
-    const mm = String(d.getMinutes()).padStart(2, '0');
-    const ss = String(d.getSeconds()).padStart(2, '0');
-    return `2000-01-01T${hh}:${mm}:${ss}`;
+    var d = new Date(isoString);
+    var hh = String(d.getHours()).padStart(2, '0');
+    var mm = String(d.getMinutes()).padStart(2, '0');
+    var ss = String(d.getSeconds()).padStart(2, '0');
+    return '2000-01-01T' + hh + ':' + mm + ':' + ss;
 }
 
-function groupRollupsByDay(rollups) {
-    const grouped = {};
-
-    for (const r of rollups) {
-        const d = new Date(r.timestamp);
-        const year = d.getFullYear();
-        const month = String(d.getMonth() + 1).padStart(2, '0');
-        const day = String(d.getDate()).padStart(2, '0');
-        const dayKey = `${year}-${month}-${day}`;
-
-        if (!grouped[dayKey]) {
-            grouped[dayKey] = [];
-        }
-
+function groupRollupsByDay(rollups, metricKey) {
+    var grouped = {};
+    for (var i = 0; i < rollups.length; i++) {
+        var r = rollups[i];
+        var d = new Date(r.timestamp);
+        var dayKey = d.getFullYear() + '-' +
+            String(d.getMonth() + 1).padStart(2, '0') + '-' +
+            String(d.getDate()).padStart(2, '0');
+        if (!grouped[dayKey]) grouped[dayKey] = [];
         grouped[dayKey].push({
             original_timestamp: r.timestamp,
             tod_timestamp: timeOfDayAnchor(r.timestamp),
-            temperature_avg: r.temperature_avg,
-            humidity_avg: r.humidity_avg
+            value: r[metricKey]
         });
     }
-
-    const sortedDays = Object.keys(grouped).sort();
-
-    for (const day of sortedDays) {
-        grouped[day].sort((a, b) => new Date(a.original_timestamp) - new Date(b.original_timestamp));
+    var sortedDays = Object.keys(grouped).sort();
+    for (var j = 0; j < sortedDays.length; j++) {
+        grouped[sortedDays[j]].sort(function(a, b) {
+            return new Date(a.original_timestamp) - new Date(b.original_timestamp);
+        });
     }
-
-    return sortedDays.map(day => ({
-        day,
-        points: grouped[day]
-    }));
+    return sortedDays.map(function(day) { return { day: day, points: grouped[day] }; });
 }
 
-function buildDailyTraces(dayGroups, valueKey, baseHex, valueLabel) {
-    const total = dayGroups.length;
-
-    return dayGroups.map((group, index) => {
-        const alpha = total <= 1 ? 1.0 : 0.2 + (0.8 * index / (total - 1));
-        const isLatest = index === total - 1;
-
+function buildDailyTraces(dayGroups, baseHex, valueLabel) {
+    var total = dayGroups.length;
+    return dayGroups.map(function(group, index) {
+        var alpha = total <= 1 ? 1.0 : 0.2 + (0.8 * index / (total - 1));
+        var isLatest = index === total - 1;
         return {
-            x: group.points.map(p => p.tod_timestamp),
-            y: group.points.map(p => p[valueKey]),
+            x: group.points.map(function(p) { return p.tod_timestamp; }),
+            y: group.points.map(function(p) { return p.value; }),
             type: 'scatter',
             mode: 'lines',
             name: group.day,
-            line: {
-                color: rgba(baseHex, alpha),
-                width: isLatest ? 3 : 2
-            },
-            hovertemplate:
-                `Day: ${group.day}<br>Time: %{x|%H:%M}<br>${valueLabel}: %{y:.2f}<extra></extra>`
+            line: { color: rgba(baseHex, alpha), width: isLatest ? 3 : 2 },
+            hovertemplate: 'Day: ' + group.day + '<br>Time: %{x|%H:%M}<br>' + valueLabel + ': %{y:.2f}<extra></extra>'
         };
     });
 }
 
+function makeRawTrace(x, y, color, name, unit) {
+    return [{
+        x: x, y: y,
+        type: 'scatter', mode: 'lines+markers',
+        name: name,
+        line: { color: color, width: 2 },
+        marker: { color: color, size: 5 },
+        hovertemplate: '%{x}<br>' + name + ': %{y:.2f} ' + unit + '<extra></extra>'
+    }];
+}
+
+function makeTrendTrace(x, y, color, name, unit) {
+    return [{
+        x: x, y: y,
+        type: 'scatter', mode: 'lines',
+        name: name,
+        line: { color: color, width: 3 },
+        hovertemplate: '%{x}<br>' + name + ': %{y:.2f} ' + unit + '<extra></extra>'
+    }];
+}
+
+var RAW_PLOTS = [
+    { id: 'tempRawPlot', metric: 'temperature', color: '#ef4444', name: 'Temperature', unit: 'C', fallback: [0, 50] },
+    { id: 'humRawPlot',  metric: 'humidity',    color: '#3b82f6', name: 'Humidity',    unit: '%', fallback: [0, 100] },
+    { id: 'vocRawPlot',  metric: 'voc_index',   color: '#f59e0b', name: 'VOC Index',  unit: '',  fallback: [0, 500] },
+    { id: 'noxRawPlot',  metric: 'nox_index',   color: '#a855f7', name: 'NOx Index',  unit: '',  fallback: [0, 500] },
+    { id: 'lightRawPlot',metric: 'ambient_light',color: '#eab308', name: 'Light',      unit: 'lx', fallback: [0, 1000] },
+];
+
+var AVG_PLOTS = [
+    { id: 'tempAvgPlot',  rollupKey: 'temperature_avg', color: '#f59e0b', label: '30m Avg Temp (C)', fallback: [0, 50] },
+    { id: 'humAvgPlot',   rollupKey: 'humidity_avg',    color: '#06b6d4', label: '30m Avg Humidity (%)', fallback: [0, 100] },
+    { id: 'vocAvgPlot',   rollupKey: 'voc_avg',          color: '#f59e0b', label: '30m Avg VOC Index', fallback: [0, 500] },
+    { id: 'noxAvgPlot',   rollupKey: 'nox_avg',          color: '#a855f7', label: '30m Avg NOx Index', fallback: [0, 500] },
+    { id: 'lightAvgPlot', rollupKey: 'light_avg',         color: '#eab308', label: '30m Avg Light (lx)', fallback: [0, 1000] },
+];
+
+var TREND_PLOTS = [
+    { id: 'tempTrendPlot',  trendKey: 'temperature_trend', color: '#ec4899', name: 'Temp Trend', unit: 'C', fallback: [0, 50] },
+    { id: 'humTrendPlot',   trendKey: 'humidity_trend',    color: '#14b8a6', name: 'Hum Trend', unit: '%', fallback: [0, 100] },
+    { id: 'vocTrendPlot',   trendKey: 'voc_trend',          color: '#ec4899', name: 'VOC Trend', unit: '', fallback: [0, 500] },
+    { id: 'noxTrendPlot',   trendKey: 'nox_trend',          color: '#a855f7', name: 'NOx Trend', unit: '', fallback: [0, 500] },
+    { id: 'lightTrendPlot', trendKey: 'light_trend',         color: '#eab308', name: 'Light Trend', unit: 'lx', fallback: [0, 1000] },
+];
+
+var ALL_PLOT_IDS = [];
+RAW_PLOTS.forEach(function(p) { ALL_PLOT_IDS.push(p.id); });
+AVG_PLOTS.forEach(function(p) { ALL_PLOT_IDS.push(p.id); });
+TREND_PLOTS.forEach(function(p) { ALL_PLOT_IDS.push(p.id); });
+
+function resetAxes() {
+    ALL_PLOT_IDS.forEach(function(id) {
+        var el = document.getElementById(id);
+        if (!el) return;
+        if (id.indexOf('AvgPlot') !== -1) {
+            Plotly.relayout(id, { 'xaxis.range': ['2000-01-01T00:00:00', '2000-01-02T00:00:00'], 'yaxis.autorange': true });
+        } else {
+            Plotly.relayout(id, { 'xaxis.autorange': true, 'yaxis.autorange': true });
+        }
+    });
+}
+
 function renderPlots(data) {
-    const rawTimestamps = data.recent_readings.map(r => r.timestamp);
-    const temps = data.recent_readings.map(r => r.temperature);
-    const humids = data.recent_readings.map(r => r.humidity);
+    _data = data;
+    var readings = data.recent_readings;
+    var rollups = data.rollups;
+    var trends = data.trends;
 
-    const allTempAvgs = data.rollups.map(r => r.temperature_avg);
-    const allHumAvgs = data.rollups.map(r => r.humidity_avg);
-
-    const trendTimestamps = data.trends.map(r => r.timestamp);
-    const tempTrends = data.trends.map(r => r.temperature_trend);
-    const humTrends = data.trends.map(r => r.humidity_trend);
+    var rawTimestamps = readings.map(function(r) { return r.timestamp; });
 
     document.getElementById('pointCount').textContent = data.total_count;
 
-    if (data.recent_readings.length > 0) {
-        const latest = data.recent_readings[data.recent_readings.length - 1];
-        document.getElementById('latestTemp').textContent = `${latest.temperature} °C`;
-        document.getElementById('latestHum').textContent = `${latest.humidity} %`;
-        document.getElementById('latestTime').textContent = formatDateTime(latest.timestamp);
+    if (readings.length > 0) {
+        var latest = readings[readings.length - 1];
+        document.getElementById('latestTemp').textContent =
+            latest.temperature != null ? latest.temperature.toFixed(1) + ' C' : '--';
+        document.getElementById('latestHum').textContent =
+            latest.humidity != null ? latest.humidity.toFixed(1) + ' %' : '--';
+        document.getElementById('latestVoc').textContent =
+            latest.voc_index != null ? latest.voc_index.toFixed(0) : '--';
+        document.getElementById('latestNox').textContent =
+            latest.nox_index != null ? latest.nox_index.toFixed(0) : '--';
+        document.getElementById('latestLight').textContent =
+            latest.ambient_light != null ? latest.ambient_light.toFixed(1) + ' lx' : '--';
     }
 
-    const tempBounds = getBounds(temps, 0, 50);
-    const humBounds = getBounds(humids, 0, 100);
-    const tempAvgBounds = getBounds(allTempAvgs, 0, 50);
-    const humAvgBounds = getBounds(allHumAvgs, 0, 100);
-    const tempTrendBounds = getBounds(tempTrends, 0, 50);
-    const humTrendBounds = getBounds(humTrends, 0, 100);
+    for (var i = 0; i < RAW_PLOTS.length; i++) {
+        var p = RAW_PLOTS[i];
+        var el = document.getElementById(p.id);
+        if (!el || !el.offsetParent) continue;
+        var pairs = readings.map(function(r) { return {x: r.timestamp, y: r[p.metric]}; })
+                           .filter(function(pt) { return pt.y != null; });
+        if (pairs.length === 0) continue;
+        var xvals = pairs.map(function(pt) { return pt.x; });
+        var yvals = pairs.map(function(pt) { return pt.y; });
+        var bounds = getBounds(yvals, p.fallback[0], p.fallback[1]);
+        Plotly.react(p.id, makeRawTrace(xvals, yvals, p.color, p.name, p.unit),
+            baseLayout(p.name + ' (' + p.unit + ')', bounds), CONFIG);
+    }
 
-    Plotly.react(
-        'tempPlot',
-        [{
-            x: rawTimestamps,
-            y: temps,
-            type: 'scatter',
-            mode: 'lines+markers',
-            name: 'Temperature',
-            line: { color: '#ef4444', width: 2 },
-            marker: { color: '#ef4444', size: 6 },
-            hovertemplate: 'Time: %{x}<br>Temperature: %{y:.2f} °C<extra></extra>'
-        }],
-        baseLayout('Temperature', 'Temperature (°C)', tempBounds),
-        config
-    );
+    for (var j = 0; j < AVG_PLOTS.length; j++) {
+        var ap = AVG_PLOTS[j];
+        var ael = document.getElementById(ap.id);
+        if (!ael || !ael.offsetParent) continue;
+        var dayGroups = groupRollupsByDay(rollups, ap.rollupKey);
+        if (dayGroups.length === 0) continue;
+        var allVals = [];
+        dayGroups.forEach(function(g) {
+            g.points.forEach(function(pt) { allVals.push(pt.value); });
+        });
+        var avgBounds = getBounds(allVals, ap.fallback[0], ap.fallback[1]);
+        Plotly.react(ap.id,
+            buildDailyTraces(dayGroups, ap.color, ap.label),
+            baseDayLayout(ap.label, avgBounds), CONFIG);
+    }
 
-    Plotly.react(
-        'humPlot',
-        [{
-            x: rawTimestamps,
-            y: humids,
-            type: 'scatter',
-            mode: 'lines+markers',
-            name: 'Humidity',
-            line: { color: '#3b82f6', width: 2 },
-            marker: { color: '#3b82f6', size: 6 },
-            hovertemplate: 'Time: %{x}<br>Humidity: %{y:.2f} %<extra></extra>'
-        }],
-        baseLayout('Humidity', 'Humidity (%)', humBounds),
-        config
-    );
-
-    const dayGroups = groupRollupsByDay(data.rollups);
-
-    Plotly.react(
-        'tempAvgPlot',
-        buildDailyTraces(dayGroups, 'temperature_avg', '#f59e0b', '30m Avg Temp (°C)'),
-        baseDayLayout('Temperature 30-Minute Average', 'Temperature (°C)', tempAvgBounds),
-        config
-    );
-
-    Plotly.react(
-        'humAvgPlot',
-        buildDailyTraces(dayGroups, 'humidity_avg', '#06b6d4', '30m Avg Humidity (%)'),
-        baseDayLayout('Humidity 30-Minute Average', 'Humidity (%)', humAvgBounds),
-        config
-    );
-
-    Plotly.react(
-        'tempTrendPlot',
-        [{
-            x: trendTimestamps,
-            y: tempTrends,
-            type: 'scatter',
-            mode: 'lines',
-            name: 'Temperature Slow Trend',
-            line: { color: '#ec4899', width: 3 },
-            hovertemplate: 'Time: %{x}<br>Temperature Trend: %{y:.2f} °C<extra></extra>'
-        }],
-        baseLayout('Temperature Slow Trend', 'Temperature (°C)', tempTrendBounds),
-        config
-    );
-
-    Plotly.react(
-        'humTrendPlot',
-        [{
-            x: trendTimestamps,
-            y: humTrends,
-            type: 'scatter',
-            mode: 'lines',
-            name: 'Humidity Slow Trend',
-            line: { color: '#14b8a6', width: 3 },
-            hovertemplate: 'Time: %{x}<br>Humidity Trend: %{y:.2f} %<extra></extra>'
-        }],
-        baseLayout('Humidity Slow Trend', 'Humidity (%)', humTrendBounds),
-        config
-    );
+    for (var k = 0; k < TREND_PLOTS.length; k++) {
+        var tp = TREND_PLOTS[k];
+        var tel = document.getElementById(tp.id);
+        if (!tel || !tel.offsetParent) continue;
+        var tPairs = trends.map(function(r) { return {x: r.timestamp, y: r[tp.trendKey]}; })
+                           .filter(function(pt) { return pt.y != null; });
+        if (tPairs.length === 0) continue;
+        var trendX = tPairs.map(function(pt) { return pt.x; });
+        var trendVals = tPairs.map(function(pt) { return pt.y; });
+        var trendBounds = getBounds(trendVals, tp.fallback[0], tp.fallback[1]);
+        Plotly.react(tp.id,
+            makeTrendTrace(trendX, trendVals, tp.color, tp.name, tp.unit),
+            baseLayout(tp.name + ' (' + tp.unit + ')', trendBounds), CONFIG);
+    }
 }
 
 function loadData() {
     fetch('/data')
-        .then(r => r.json())
-        .then(data => renderPlots(data))
-        .catch(err => console.error('Failed to load data:', err));
+        .then(function(r) { return r.json(); })
+        .then(function(data) { renderPlots(data); })
+        .catch(function(err) { console.error('Failed to load data:', err); });
 }
 
 loadData();
@@ -566,9 +622,11 @@ setInterval(loadData, 60000);
 </html>
 """
 
+
 @app.route("/")
 def index():
     return render_template_string(HTML)
+
 
 @app.route("/data")
 def data():
@@ -576,8 +634,9 @@ def data():
         "total_count": get_total_count(),
         "recent_readings": get_recent_readings(RECENT_LIMIT),
         "rollups": get_rollups(),
-        "trends": get_trends()
+        "trends": get_trends(),
     })
+
 
 @app.route("/shutdown", methods=["POST"])
 def shutdown():
