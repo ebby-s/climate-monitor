@@ -1,5 +1,3 @@
-import os
-
 from flask import Flask, render_template_string, jsonify
 
 from src.models import get_recent_readings, get_rollups, get_trends, get_total_count
@@ -158,10 +156,6 @@ HTML = r"""
             font-size: 13px;
         }
         button:hover { filter: brightness(1.1); }
-        .shutdown-btn {
-            background: #7f1d1d;
-            border-color: #991b1b;
-        }
         .note {
             margin-top: 12px;
             color: var(--muted);
@@ -326,7 +320,6 @@ HTML = r"""
 
     <div class="actions">
         <button onclick="resetAxes()">Reset All Zoom</button>
-        <button class="shutdown-btn" onclick="shutdownPi()">Shutdown Raspberry Pi</button>
     </div>
     <div class="note">
         Charts auto-refresh every 60 seconds. Drag to zoom, double-click to reset individual axes.
@@ -350,12 +343,6 @@ function switchTab(tabId) {
         Plotly.Plots.resize(document.querySelector('.tab-content.active .plot'));
         if (_data) renderPlots(_data);
     }, 50);
-}
-
-function shutdownPi() {
-    if (confirm("Shut down the Raspberry Pi?")) {
-        fetch('/shutdown', { method: 'POST' }).then(function() { alert("Shutting down..."); });
-    }
 }
 
 function getBounds(values, fallbackMin, fallbackMax) {
@@ -638,7 +625,4 @@ def data():
     })
 
 
-@app.route("/shutdown", methods=["POST"])
-def shutdown():
-    os.system("sudo shutdown now")
-    return "Shutting down...", 200
+
