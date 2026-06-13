@@ -13,6 +13,7 @@ DB_PATH="$PROJECT_DIR/data/sensor_data.db"
 SNAPSHOT="/tmp/climate_sync.db"
 
 mkdir -p "$(dirname "$SNAPSHOT")"
+rm -f "$SNAPSHOT"
 
 sqlite3 "$DB_PATH" "VACUUM INTO '$SNAPSHOT'"
 
