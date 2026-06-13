@@ -76,8 +76,8 @@ class SensorReader:
         while self._running:
             try:
                 sraw_voc, sraw_nox = self._sgp41.measure_raw()
-                voc = self._voc_algo.process(sraw_voc)
-                nox = self._nox_algo.process(sraw_nox)
+                voc = self._voc_algo.process(sraw_voc.ticks)
+                nox = self._nox_algo.process(sraw_nox.ticks)
                 with self._lock:
                     self._voc_index = voc
                     self._nox_index = nox
