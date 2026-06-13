@@ -40,58 +40,117 @@ Before running, enable I2C on the Pi:
 sudo raspi-config nonint do_i2c 0
 ```
 
-Verify sensors are detected:
+Verify sensors are detected (SGP41 may not appear):
 ```bash
 sudo i2cdetect -y 1
+```
+
+**Armbian / non-Raspberry Pi:** Use `armbian-config` → System → Hardware → enable i2c0. The I2C bus may be `/dev/i2c-0`. Set the environment variable if needed:
+```bash
+export CLIMATE_I2C_BUS=/dev/i2c-0
 ```
 
 ## Software Setup
 
 ```bash
-# Create and activate a virtual environment
 python3 -m venv .venv
 source .venv/bin/activate
-
-# Install dependencies
 pip install -r requirements.txt
 ```
 
 ## Running
 
-Three modes of operation are available:
+Three modes of operation:
 
-### Combined (single device)
-Runs recorder and webserver on the same Pi:
+| Script | Runs | Use case |
+|--------|------|----------|
+| `python run_recorder.py` | Recorder only | Sensor Pi |
+| `python run_webserver.py` | Webserver only | Dashboard machine |
+| `python sensor_app.py` | Both (threaded) | Single-machine setup |
+
+## Auto-start on Boot
+
+Install the systemd service with the install script:
+
 ```bash
-python sensor_app.py
+bash scripts/install_services.sh
 ```
 
-### Recorder only
-Writes sensor data to the database file without serving the dashboard:
+The script auto-detects your project path, user, and virtual environment, then asks which mode to install:
+
+| Choice | Installs | For |
+|--------|----------|-----|
+| `recorder` | `climate-monitor-recorder.service` + sync timer | Sensor Pi |
+| `webserver` | `climate-monitor-webserver.service` | Dashboard machine |
+| `combined` | `climate-monitor.service` | Single machine |
+
+After install:
+
 ```bash
-python run_recorder.py
+# Check status
+systemctl status climate-monitor-recorder
+
+# View logs
+journalctl -u climate-monitor-recorder -f
 ```
 
-### Webserver only
-Reads from an existing database file and serves the dashboard:
-```bash
-python run_webserver.py
-```
+## Split Deployment Over Tailscale
 
-### Split across two devices
-Run the recorder on the Pi with the sensors, and the webserver on another device (e.g. a desktop, laptop, or second Pi). Both must access the same `data/` directory — use NFS, Samba, or `rsync` to share the `sensor_data.db` file.
+Run the recorder on the Pi (with sensors) and the webserver on a separate machine (laptop, desktop, or second Pi). The database is synced every 60 seconds over a Tailscale network.
 
-**Recorder device (with sensors):**
-```bash
-python run_recorder.py
-```
+### Setup
 
-**Webserver device (no sensors needed):**
-```bash
-python run_webserver.py
-```
+1. **Install Tailscale on both machines** and join the same tailnet ([tailscale.com/download](https://tailscale.com/download)).
 
-The dashboard is accessible at `http://<device-ip>:5000`.
+2. **Set up both machines** with the project:
+   ```bash
+   git clone ... ~/climate-monitor
+   cd ~/climate-monitor
+   python3 -m venv .venv && source .venv/bin/activate
+   pip install -r requirements.txt
+   ```
+
+3. **On the recorder Pi**, install the recorder service + sync timer:
+   ```bash
+   bash scripts/install_services.sh   # choose 1 (recorder)
+   ```
+
+4. **On the webserver machine**, install the webserver service:
+   ```bash
+   bash scripts/install_services.sh   # choose 2 (webserver)
+   ```
+
+5. **On the recorder Pi**, edit `scripts/sync_db.sh` and set your webserver's Tailscale hostname:
+   ```bash
+   TARGET="my-webserver"  # or "my-webserver.tailnet-name.ts.net"
+   ```
+
+6. **On the recorder Pi**, copy your SSH key to the webserver:
+   ```bash
+   ssh-copy-id my-webserver
+   ```
+
+7. **On the webserver**, create the data directory:
+   ```bash
+   mkdir -p ~/climate-monitor/data
+   ```
+
+8. Start syncing (the timer is already enabled, but trigger the first sync now):
+   ```bash
+   sudo systemctl start climate-monitor-sync
+   ```
+
+The dashboard is then accessible at `http://<webserver-hostname>:5000`.
+
+### How the sync works
+
+The sync timer fires every 60 seconds. It runs `scripts/sync_db.sh` which:
+
+1. Creates a transactionally-consistent snapshot via `sqlite3 .backup` (safe while the recorder is writing)
+2. Uses `rsync` over Tailscale to copy the snapshot to the webserver
+3. `rsync` atomically replaces the DB file on the webserver — open connections keep reading the old inode until they close; the next request picks up the new data
+
+The database uses **WAL journal mode** so the recorder can write and the webserver can read concurrently without locking conflicts.
 
 ## Dashboard
 
@@ -121,16 +180,25 @@ climate-monitor/
 ├── README.md
 ├── requirements.txt
 ├── .gitignore
-├── run_recorder.py       # Entry: recorder only
-├── run_webserver.py      # Entry: webserver only
-├── sensor_app.py         # Entry: combined recorder + webserver
-├── data/                 # SQLite database (gitignored)
+├── run_recorder.py          # Entry: recorder only
+├── run_webserver.py         # Entry: webserver only
+├── sensor_app.py            # Entry: combined recorder + webserver
+├── scripts/
+│   ├── install_services.sh  # One-command systemd setup
+│   └── sync_db.sh           # DB snapshot + rsync to webserver
+├── services/
+│   ├── climate-monitor-recorder.service
+│   ├── climate-monitor-webserver.service
+│   ├── climate-monitor.service
+│   ├── climate-monitor-sync.service
+│   └── climate-monitor-sync.timer
+├── data/                    # SQLite database (gitignored)
 └── src/
     ├── __init__.py
-    ├── config.py         # Constants, I2C addresses
-    ├── database.py       # SQLite schema and utilities
-    ├── models.py         # Data access and aggregation
-    ├── sensors.py        # Sensor drivers and SGP41 algorithm
-    ├── recorder.py       # Recording loop
-    └── webapp.py         # Flask server and Plotly dashboard
+    ├── config.py            # Constants, I2C addresses
+    ├── database.py          # SQLite schema and utilities
+    ├── models.py            # Data access and aggregation
+    ├── sensors.py           # Sensor drivers and SGP41 algorithm
+    ├── recorder.py          # Recording loop
+    └── webapp.py            # Flask server and Plotly dashboard
 ```

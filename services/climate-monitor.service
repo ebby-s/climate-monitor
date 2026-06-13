@@ -1,0 +1,17 @@
+[Unit]
+Description=Climate Monitor (Combined)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User={USER}
+WorkingDirectory={PROJECT_DIR}
+ExecStart={VENV_PYTHON} sensor_app.py
+Restart=on-failure
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

@@ -49,6 +49,7 @@ def init_db():
     """)
 
     c.execute("CREATE INDEX IF NOT EXISTS idx_readings_timestamp ON readings(timestamp)")
+    c.execute("PRAGMA journal_mode=WAL;")
     conn.commit()
     conn.close()
 

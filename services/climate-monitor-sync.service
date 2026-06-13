@@ -1,0 +1,10 @@
+[Unit]
+Description=Climate Monitor DB Sync
+After=climate-monitor-recorder.service
+
+[Service]
+Type=oneshot
+ExecStart={PROJECT_DIR}/scripts/sync_db.sh
+User={USER}
+StandardOutput=journal
+StandardError=journal
