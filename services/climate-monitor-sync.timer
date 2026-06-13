@@ -2,7 +2,8 @@
 Description=Climate Monitor DB Sync Timer
 
 [Timer]
-OnUnitActiveSec=60
+OnBootSec=30
+OnCalendar=*:*:0/60
 Persistent=true
 
 [Install]

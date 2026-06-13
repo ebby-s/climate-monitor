@@ -89,8 +89,12 @@ for src in $SERVICE_FILES; do
     systemctl status "$name" --no-pager --lines=0 2>/dev/null || true
 done
 
-# ----- Tailscale sync tip (recorder mode only) -----------------------------
+# ----- Start first sync (recorder) ----------------------------------------
 if [ "$MODE" = "recorder" ]; then
+    echo ""
+    echo "Starting first sync..."
+    sudo systemctl start climate-monitor-sync.service
+
     echo ""
     echo "---- Tailscale Sync Setup ----"
     echo "1. Edit scripts/sync_db.sh and set TARGET to your webserver's Tailscale hostname."
