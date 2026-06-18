@@ -372,7 +372,8 @@ function baseLayout(yTitle, yBounds) {
             zerolinecolor: 'rgba(148,163,184,0.12)',
             color: '#94a3b8'
         },
-        hovermode: 'closest'
+        hovermode: 'closest',
+        legend: { orientation: 'h', y: 1.08, x: 0 }
     };
 }
 
