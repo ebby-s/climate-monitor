@@ -1,4 +1,5 @@
-from datetime import timedelta
+import statistics
+from datetime import datetime, timedelta
 
 from src.database import (
     get_conn, parse_ts, now_iso,
@@ -250,3 +251,101 @@ def get_total_count():
     count = c.fetchone()[0]
     conn.close()
     return count
+
+
+def get_prev3day_profile():
+    conn = get_conn()
+    c = conn.cursor()
+    c.execute("SELECT MAX(timestamp) FROM readings")
+    max_ts = c.fetchone()[0]
+    if not max_ts:
+        conn.close()
+        return []
+    latest = parse_ts(max_ts)
+    if latest is None:
+        conn.close()
+        return []
+    end = latest - timedelta(days=1)
+    start = latest - timedelta(days=4)
+    c.execute("""
+        SELECT strftime('%H:%M', timestamp) as time_of_day,
+               AVG(temperature), AVG(humidity),
+               AVG(voc_index), AVG(nox_index), AVG(ambient_light)
+        FROM readings
+        WHERE timestamp >= ? AND timestamp < ?
+        GROUP BY time_of_day
+        ORDER BY time_of_day
+    """, (start.isoformat(), end.isoformat()))
+    rows = c.fetchall()
+    conn.close()
+    result = []
+    for r in rows:
+        entry = {
+            "time_of_day": r[0],
+            "temperature": r[1],
+            "humidity": r[2],
+            "voc_index": r[3],
+            "nox_index": r[4],
+            "ambient_light": r[5],
+        }
+        result.append(entry)
+    return result
+
+
+def get_daily_stats():
+    conn = get_conn()
+    c = conn.cursor()
+    c.execute("""
+        SELECT date(timestamp) as day,
+               temperature, humidity, voc_index, nox_index, ambient_light
+        FROM readings
+        ORDER BY timestamp ASC
+    """)
+    rows = c.fetchall()
+    conn.close()
+
+    days = {}
+    for r in rows:
+        day = r[0]
+        if day not in days:
+            days[day] = {
+                "temperature": [],
+                "humidity": [],
+                "voc_index": [],
+                "nox_index": [],
+                "ambient_light": [],
+            }
+        for i, key in enumerate(["temperature", "humidity", "voc_index", "nox_index", "ambient_light"], 1):
+            if r[i] is not None:
+                days[day][key].append(r[i])
+
+    METRICS = ["temperature", "humidity", "voc_index", "nox_index", "ambient_light"]
+
+    result = {}
+    for day in sorted(days.keys()):
+        result[day] = {}
+        for metric in METRICS:
+            vals = days[day][metric]
+            if len(vals) >= 4:
+                svals = sorted(vals)
+                n = len(svals)
+                qs = statistics.quantiles(svals, n=4)
+                result[day][metric] = {
+                    "min": svals[0],
+                    "q1": qs[0],
+                    "median": qs[1],
+                    "q3": qs[2],
+                    "max": svals[-1],
+                    "mean": sum(svals) / n,
+                }
+            elif len(vals) > 0:
+                svals = sorted(vals)
+                result[day][metric] = {
+                    "min": svals[0],
+                    "q1": svals[0],
+                    "median": svals[len(svals) // 2],
+                    "q3": svals[-1],
+                    "max": svals[-1],
+                    "mean": sum(svals) / len(svals),
+                }
+    return result

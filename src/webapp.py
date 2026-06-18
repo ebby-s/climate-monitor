@@ -1,6 +1,6 @@
 from flask import Flask, render_template_string, jsonify
 
-from src.models import get_recent_readings, get_rollups, get_trends, get_total_count
+from src.models import get_recent_readings, get_rollups, get_trends, get_total_count, get_prev3day_profile, get_daily_stats
 from src.config import RECENT_LIMIT
 
 app = Flask(__name__)
@@ -207,114 +207,114 @@ HTML = r"""
     <div id="tab-th" class="tab-content active">
         <div class="chart-box">
             <div class="chart-header">
-                <h2>Temperature &mdash; Last 12 Hours</h2>
-                <div class="chart-subtitle">All 1-minute readings</div>
+                <h2>Temperature &mdash; Last 24 Hours</h2>
+                <div class="chart-subtitle">All 1-minute readings with 3-day average overlay</div>
             </div>
             <div id="tempRawPlot" class="plot"></div>
         </div>
         <div class="chart-box">
             <div class="chart-header">
                 <h2>Temperature &mdash; 30-Minute Averages by Day</h2>
-                <div class="chart-subtitle">One line per calendar day; brighter = more recent</div>
+                <div class="chart-subtitle">One line per calendar day</div>
             </div>
             <div id="tempAvgPlot" class="plot"></div>
         </div>
         <div class="chart-box">
             <div class="chart-header">
-                <h2>Temperature &mdash; 6-Hour Rolling Trend</h2>
-                <div class="chart-subtitle">Smoothed long-term trend over all recorded data</div>
+                <h2>Temperature &mdash; Daily Distribution</h2>
+                <div class="chart-subtitle">Per-day min, quartiles, max, and mean</div>
             </div>
-            <div id="tempTrendPlot" class="plot"></div>
+            <div id="tempDailyPlot" class="plot"></div>
         </div>
         <div class="chart-box">
             <div class="chart-header">
-                <h2>Humidity &mdash; Last 12 Hours</h2>
-                <div class="chart-subtitle">All 1-minute readings</div>
+                <h2>Humidity &mdash; Last 24 Hours</h2>
+                <div class="chart-subtitle">All 1-minute readings with 3-day average overlay</div>
             </div>
             <div id="humRawPlot" class="plot"></div>
         </div>
         <div class="chart-box">
             <div class="chart-header">
                 <h2>Humidity &mdash; 30-Minute Averages by Day</h2>
-                <div class="chart-subtitle">One line per calendar day; brighter = more recent</div>
+                <div class="chart-subtitle">One line per calendar day</div>
             </div>
             <div id="humAvgPlot" class="plot"></div>
         </div>
         <div class="chart-box">
             <div class="chart-header">
-                <h2>Humidity &mdash; 6-Hour Rolling Trend</h2>
-                <div class="chart-subtitle">Smoothed long-term trend over all recorded data</div>
+                <h2>Humidity &mdash; Daily Distribution</h2>
+                <div class="chart-subtitle">Per-day min, quartiles, max, and mean</div>
             </div>
-            <div id="humTrendPlot" class="plot"></div>
+            <div id="humDailyPlot" class="plot"></div>
         </div>
     </div>
 
     <div id="tab-aq" class="tab-content">
         <div class="chart-box">
             <div class="chart-header">
-                <h2>VOC Index &mdash; Last 12 Hours</h2>
-                <div class="chart-subtitle">Volatile Organic Compounds (0-500); all 1-minute readings</div>
+                <h2>VOC Index &mdash; Last 24 Hours</h2>
+                <div class="chart-subtitle">Volatile Organic Compounds (0-500); all 1-minute readings with 3-day average overlay</div>
             </div>
             <div id="vocRawPlot" class="plot"></div>
         </div>
         <div class="chart-box">
             <div class="chart-header">
                 <h2>VOC Index &mdash; 30-Minute Averages by Day</h2>
-                <div class="chart-subtitle">One line per calendar day; brighter = more recent</div>
+                <div class="chart-subtitle">One line per calendar day</div>
             </div>
             <div id="vocAvgPlot" class="plot"></div>
         </div>
         <div class="chart-box">
             <div class="chart-header">
-                <h2>VOC Index &mdash; 6-Hour Rolling Trend</h2>
-                <div class="chart-subtitle">Smoothed long-term trend over all recorded data</div>
+                <h2>VOC Index &mdash; Daily Distribution</h2>
+                <div class="chart-subtitle">Per-day min, quartiles, max, and mean</div>
             </div>
-            <div id="vocTrendPlot" class="plot"></div>
+            <div id="vocDailyPlot" class="plot"></div>
         </div>
         <div class="chart-box">
             <div class="chart-header">
-                <h2>NOx Index &mdash; Last 12 Hours</h2>
-                <div class="chart-subtitle">Nitrogen Oxides (0-500); all 1-minute readings</div>
+                <h2>NOx Index &mdash; Last 24 Hours</h2>
+                <div class="chart-subtitle">Nitrogen Oxides (0-500); all 1-minute readings with 3-day average overlay</div>
             </div>
             <div id="noxRawPlot" class="plot"></div>
         </div>
         <div class="chart-box">
             <div class="chart-header">
                 <h2>NOx Index &mdash; 30-Minute Averages by Day</h2>
-                <div class="chart-subtitle">One line per calendar day; brighter = more recent</div>
+                <div class="chart-subtitle">One line per calendar day</div>
             </div>
             <div id="noxAvgPlot" class="plot"></div>
         </div>
         <div class="chart-box">
             <div class="chart-header">
-                <h2>NOx Index &mdash; 6-Hour Rolling Trend</h2>
-                <div class="chart-subtitle">Smoothed long-term trend over all recorded data</div>
+                <h2>NOx Index &mdash; Daily Distribution</h2>
+                <div class="chart-subtitle">Per-day min, quartiles, max, and mean</div>
             </div>
-            <div id="noxTrendPlot" class="plot"></div>
+            <div id="noxDailyPlot" class="plot"></div>
         </div>
     </div>
 
     <div id="tab-light" class="tab-content">
         <div class="chart-box">
             <div class="chart-header">
-                <h2>Ambient Light &mdash; Last 12 Hours</h2>
-                <div class="chart-subtitle">All 1-minute readings in lux</div>
+                <h2>Ambient Light &mdash; Last 24 Hours</h2>
+                <div class="chart-subtitle">All 1-minute readings in lux with 3-day average overlay</div>
             </div>
             <div id="lightRawPlot" class="plot"></div>
         </div>
         <div class="chart-box">
             <div class="chart-header">
                 <h2>Ambient Light &mdash; 30-Minute Averages by Day</h2>
-                <div class="chart-subtitle">One line per calendar day; brighter = more recent</div>
+                <div class="chart-subtitle">One line per calendar day</div>
             </div>
             <div id="lightAvgPlot" class="plot"></div>
         </div>
         <div class="chart-box">
             <div class="chart-header">
-                <h2>Ambient Light &mdash; 6-Hour Rolling Trend</h2>
-                <div class="chart-subtitle">Smoothed long-term trend over all recorded data</div>
+                <h2>Ambient Light &mdash; Daily Distribution</h2>
+                <div class="chart-subtitle">Per-day min, quartiles, max, and mean</div>
             </div>
-            <div id="lightTrendPlot" class="plot"></div>
+            <div id="lightDailyPlot" class="plot"></div>
         </div>
     </div>
 
@@ -399,19 +399,66 @@ function baseDayLayout(yTitle, yBounds) {
             zerolinecolor: 'rgba(148,163,184,0.12)',
             color: '#94a3b8'
         },
-        hovermode: 'closest',
-        legend: { orientation: 'h', y: 1.08, x: 0 }
+        hovermode: 'closest'
     };
 }
 
 var CONFIG = { responsive: true, displayModeBar: true, scrollZoom: true };
 
-function rgba(hex, alpha) {
+function dailyLayout(yTitle, yBounds) {
+    return {
+        paper_bgcolor: 'rgba(0,0,0,0)',
+        plot_bgcolor: '#111827',
+        font: { color: '#e5e7eb' },
+        margin: { l: 60, r: 20, t: 10, b: 70 },
+        xaxis: {
+            title: 'Day',
+            type: 'category',
+            tickangle: -45,
+            gridcolor: 'rgba(148,163,184,0.12)',
+            zerolinecolor: 'rgba(148,163,184,0.12)',
+            color: '#94a3b8'
+        },
+        yaxis: {
+            title: yTitle,
+            range: [yBounds.min, yBounds.max],
+            gridcolor: 'rgba(148,163,184,0.12)',
+            zerolinecolor: 'rgba(148,163,184,0.12)',
+            color: '#94a3b8'
+        },
+        hovermode: 'closest'
+    };
+}
+
+var CIVIDIS_STOPS = [
+    [0.0, [0,32,76]],
+    [0.1, [0,52,107]],
+    [0.2, [23,77,131]],
+    [0.3, [55,101,133]],
+    [0.4, [90,124,117]],
+    [0.5, [124,146,90]],
+    [0.6, [162,164,62]],
+    [0.7, [200,179,43]],
+    [0.8, [231,194,30]],
+    [0.9, [253,219,35]],
+    [1.0, [253,231,37]]
+];
+
+function cividisColor(t) {
+    t = Math.max(0, Math.min(1, t));
+    var i;
+    for (i = 0; i < CIVIDIS_STOPS.length - 2 && CIVIDIS_STOPS[i + 1][0] <= t; i++);
+    var lo = CIVIDIS_STOPS[i], hi = CIVIDIS_STOPS[i + 1];
+    var frac = (t - lo[0]) / (hi[0] - lo[0]);
+    var r = Math.round(lo[1][0] + frac * (hi[1][0] - lo[1][0]));
+    var g = Math.round(lo[1][1] + frac * (hi[1][1] - lo[1][1]));
+    var b = Math.round(lo[1][2] + frac * (hi[1][2] - lo[1][2]));
+    return 'rgb(' + r + ',' + g + ',' + b + ')';
+}
+
+function hexToRgba(hex, a) {
     var h = hex.replace('#', '');
-    var r = parseInt(h.substring(0,2), 16);
-    var g = parseInt(h.substring(2,4), 16);
-    var b = parseInt(h.substring(4,6), 16);
-    return 'rgba(' + r + ',' + g + ',' + b + ',' + alpha + ')';
+    return 'rgba(' + parseInt(h.substring(0,2), 16) + ',' + parseInt(h.substring(2,4), 16) + ',' + parseInt(h.substring(4,6), 16) + ',' + a + ')';
 }
 
 function timeOfDayAnchor(isoString) {
@@ -449,7 +496,7 @@ function groupRollupsByDay(rollups, metricKey) {
 function buildDailyTraces(dayGroups, baseHex, valueLabel) {
     var total = dayGroups.length;
     return dayGroups.map(function(group, index) {
-        var alpha = total <= 1 ? 1.0 : 0.2 + (0.8 * index / (total - 1));
+        var ratio = total <= 1 ? 1.0 : index / (total - 1);
         var isLatest = index === total - 1;
         return {
             x: group.points.map(function(p) { return p.tod_timestamp; }),
@@ -457,7 +504,8 @@ function buildDailyTraces(dayGroups, baseHex, valueLabel) {
             type: 'scatter',
             mode: 'lines',
             name: group.day,
-            line: { color: rgba(baseHex, alpha), width: isLatest ? 3 : 2 },
+            showlegend: false,
+            line: { color: cividisColor(ratio), width: isLatest ? 3 : 2 },
             hovertemplate: 'Day: ' + group.day + '<br>Time: %{x|%H:%M}<br>' + valueLabel + ': %{y:.2f}<extra></extra>'
         };
     });
@@ -470,16 +518,6 @@ function makeRawTrace(x, y, color, name, unit) {
         name: name,
         line: { color: color, width: 2 },
         marker: { color: color, size: 5 },
-        hovertemplate: '%{x}<br>' + name + ': %{y:.2f} ' + unit + '<extra></extra>'
-    }];
-}
-
-function makeTrendTrace(x, y, color, name, unit) {
-    return [{
-        x: x, y: y,
-        type: 'scatter', mode: 'lines',
-        name: name,
-        line: { color: color, width: 3 },
         hovertemplate: '%{x}<br>' + name + ': %{y:.2f} ' + unit + '<extra></extra>'
     }];
 }
@@ -500,18 +538,18 @@ var AVG_PLOTS = [
     { id: 'lightAvgPlot', rollupKey: 'light_avg',         color: '#eab308', label: '30m Avg Light (lx)', fallback: [0, 1000] },
 ];
 
-var TREND_PLOTS = [
-    { id: 'tempTrendPlot',  trendKey: 'temperature_trend', color: '#ec4899', name: 'Temp Trend', unit: 'C', fallback: [0, 50] },
-    { id: 'humTrendPlot',   trendKey: 'humidity_trend',    color: '#14b8a6', name: 'Hum Trend', unit: '%', fallback: [0, 100] },
-    { id: 'vocTrendPlot',   trendKey: 'voc_trend',          color: '#ec4899', name: 'VOC Trend', unit: '', fallback: [0, 500] },
-    { id: 'noxTrendPlot',   trendKey: 'nox_trend',          color: '#a855f7', name: 'NOx Trend', unit: '', fallback: [0, 500] },
-    { id: 'lightTrendPlot', trendKey: 'light_trend',         color: '#eab308', name: 'Light Trend', unit: 'lx', fallback: [0, 1000] },
+var DAILY_PLOTS = [
+    { id: 'tempDailyPlot',  metric: 'temperature', color: '#ef4444', name: 'Temperature', unit: 'C', fallback: [0, 50] },
+    { id: 'humDailyPlot',   metric: 'humidity',    color: '#3b82f6', name: 'Humidity',    unit: '%', fallback: [0, 100] },
+    { id: 'vocDailyPlot',   metric: 'voc_index',   color: '#f59e0b', name: 'VOC Index',  unit: '',  fallback: [0, 500] },
+    { id: 'noxDailyPlot',   metric: 'nox_index',   color: '#a855f7', name: 'NOx Index',  unit: '',  fallback: [0, 500] },
+    { id: 'lightDailyPlot', metric: 'ambient_light',color: '#eab308', name: 'Light',      unit: 'lx', fallback: [0, 1000] },
 ];
 
 var ALL_PLOT_IDS = [];
 RAW_PLOTS.forEach(function(p) { ALL_PLOT_IDS.push(p.id); });
 AVG_PLOTS.forEach(function(p) { ALL_PLOT_IDS.push(p.id); });
-TREND_PLOTS.forEach(function(p) { ALL_PLOT_IDS.push(p.id); });
+DAILY_PLOTS.forEach(function(p) { ALL_PLOT_IDS.push(p.id); });
 
 function resetAxes() {
     ALL_PLOT_IDS.forEach(function(id) {
@@ -558,8 +596,38 @@ function renderPlots(data) {
         if (pairs.length === 0) continue;
         var xvals = pairs.map(function(pt) { return pt.x; });
         var yvals = pairs.map(function(pt) { return pt.y; });
+
+        var traces = makeRawTrace(xvals, yvals, p.color, p.name, p.unit);
+
+        var profile = data.prev3day_profile;
+        if (profile && profile.length > 0 && xvals.length > 0) {
+            var rawStart = new Date(xvals[0]);
+            var rawStartDate = rawStart.toISOString().split('T')[0];
+            var profileX = [];
+            var profileY = [];
+            for (var pi = 0; pi < profile.length; pi++) {
+                var pe = profile[pi];
+                if (pe[p.metric] == null) continue;
+                var d = new Date(rawStartDate + 'T' + pe.time_of_day + ':00');
+                if (d < rawStart) d.setDate(d.getDate() + 1);
+                profileX.push(d.toISOString());
+                profileY.push(pe[p.metric]);
+                yvals.push(pe[p.metric]);
+            }
+            if (profileX.length > 0) {
+                traces.push({
+                    x: profileX, y: profileY,
+                    type: 'scatter', mode: 'lines',
+                    name: '3-day avg',
+                    line: { color: p.color, width: 1.5 },
+                    opacity: 0.35,
+                    hovertemplate: '3-day avg<br>Time: %{x}<br>' + p.name + ': %{y:.2f} ' + p.unit + '<extra></extra>'
+                });
+            }
+        }
+
         var bounds = getBounds(yvals, p.fallback[0], p.fallback[1]);
-        Plotly.react(p.id, makeRawTrace(xvals, yvals, p.color, p.name, p.unit),
+        Plotly.react(p.id, traces,
             baseLayout(p.name + ' (' + p.unit + ')', bounds), CONFIG);
     }
 
@@ -579,19 +647,42 @@ function renderPlots(data) {
             baseDayLayout(ap.label, avgBounds), CONFIG);
     }
 
-    for (var k = 0; k < TREND_PLOTS.length; k++) {
-        var tp = TREND_PLOTS[k];
-        var tel = document.getElementById(tp.id);
-        if (!tel || !tel.offsetParent) continue;
-        var tPairs = trends.map(function(r) { return {x: r.timestamp, y: r[tp.trendKey]}; })
-                           .filter(function(pt) { return pt.y != null; });
-        if (tPairs.length === 0) continue;
-        var trendX = tPairs.map(function(pt) { return pt.x; });
-        var trendVals = tPairs.map(function(pt) { return pt.y; });
-        var trendBounds = getBounds(trendVals, tp.fallback[0], tp.fallback[1]);
-        Plotly.react(tp.id,
-            makeTrendTrace(trendX, trendVals, tp.color, tp.name, tp.unit),
-            baseLayout(tp.name + ' (' + tp.unit + ')', trendBounds), CONFIG);
+    for (var k = 0; k < DAILY_PLOTS.length; k++) {
+        var dp = DAILY_PLOTS[k];
+        var del2 = document.getElementById(dp.id);
+        if (!del2 || !del2.offsetParent) continue;
+        var dailyStats = data.daily_stats;
+        var allDays = Object.keys(dailyStats).sort();
+        if (allDays.length === 0) continue;
+        var plotDays = [], q1 = [], med = [], q3 = [], lof = [], hif = [], mn = [];
+        var allVals = [];
+        for (var d = 0; d < allDays.length; d++) {
+            var s = dailyStats[allDays[d]][dp.metric];
+            if (s) {
+                plotDays.push(allDays[d]);
+                q1.push(s.q1); med.push(s.median); q3.push(s.q3);
+                lof.push(s.min); hif.push(s.max); mn.push(s.mean);
+                allVals.push(s.min, s.q1, s.median, s.q3, s.max, s.mean);
+            }
+        }
+        if (q1.length === 0) continue;
+        var db = getBounds(allVals, dp.fallback[0], dp.fallback[1]);
+        var boxTrace = {
+            type: 'box',
+            x: plotDays,
+            q1: q1, median: med, q3: q3,
+            lowerfence: lof, upperfence: hif,
+            mean: mn,
+            boxmean: true,
+            name: dp.name,
+            marker: { color: dp.color },
+            fillcolor: hexToRgba(dp.color, 0.15),
+            line: { color: dp.color },
+            hovertemplate: '%{x}<br>Min: %{customdata[0]:.2f}  Q1: %{customdata[1]:.2f}  Med: %{customdata[2]:.2f}  Q3: %{customdata[3]:.2f}  Max: %{customdata[4]:.2f}  Mean: %{customdata[5]:.2f} ' + dp.unit + '<extra></extra>',
+            customdata: plotDays.map(function(day, i) { return [lof[i], q1[i], med[i], q3[i], hif[i], mn[i]]; })
+        };
+        Plotly.react(dp.id, [boxTrace],
+            dailyLayout(dp.name + ' (' + dp.unit + ')', db), CONFIG);
     }
 }
 
@@ -622,6 +713,8 @@ def data():
         "recent_readings": get_recent_readings(RECENT_LIMIT),
         "rollups": get_rollups(),
         "trends": get_trends(),
+        "prev3day_profile": get_prev3day_profile(),
+        "daily_stats": get_daily_stats(),
     })
 
 
