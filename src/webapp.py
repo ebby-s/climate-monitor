@@ -601,18 +601,22 @@ function renderPlots(data) {
 
         var profile = data.prev3day_profile;
         if (profile && profile.length > 0 && xvals.length > 0) {
-            var rawStart = new Date(xvals[0]);
-            var rawStartDate = rawStart.toISOString().split('T')[0];
+            var profileMap = {};
+            for (var pi = 0; pi < profile.length; pi++) {
+                if (profile[pi][p.metric] != null) {
+                    profileMap[profile[pi].time_of_day] = profile[pi][p.metric];
+                }
+            }
             var profileX = [];
             var profileY = [];
-            for (var pi = 0; pi < profile.length; pi++) {
-                var pe = profile[pi];
-                if (pe[p.metric] == null) continue;
-                var d = new Date(rawStartDate + 'T' + pe.time_of_day + ':00');
-                if (d < rawStart) d.setDate(d.getDate() + 1);
-                profileX.push(d.toISOString());
-                profileY.push(pe[p.metric]);
-                yvals.push(pe[p.metric]);
+            for (var ri = 0; ri < xvals.length; ri++) {
+                var tod = xvals[ri].substring(11, 16);
+                var pv = profileMap[tod];
+                if (pv != null) {
+                    profileX.push(xvals[ri]);
+                    profileY.push(pv);
+                    yvals.push(pv);
+                }
             }
             if (profileX.length > 0) {
                 traces.push({

@@ -268,7 +268,7 @@ def get_prev3day_profile():
     end = latest - timedelta(days=1)
     start = latest - timedelta(days=4)
     c.execute("""
-        SELECT strftime('%H:%M', timestamp) as time_of_day,
+        SELECT substr(timestamp, 12, 5) as time_of_day,
                AVG(temperature), AVG(humidity),
                AVG(voc_index), AVG(nox_index), AVG(ambient_light)
         FROM readings
