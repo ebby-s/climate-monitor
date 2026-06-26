@@ -405,7 +405,7 @@ def backfill_wet_bulb_rollups():
         UPDATE rollup_30m SET wet_bulb_temp_avg = (
             SELECT AVG(wet_bulb_temperature)
             FROM readings
-            WHERE timestamp > datetime(rollup_30m.bucket_timestamp, '-30 minutes')
+            WHERE timestamp > strftime('%Y-%m-%dT%H:%M:%S', rollup_30m.bucket_timestamp, '-30 minutes')
               AND timestamp <= rollup_30m.bucket_timestamp
         )
         WHERE wet_bulb_temp_avg IS NULL
@@ -423,7 +423,7 @@ def backfill_wet_bulb_trends():
         UPDATE trend_6h SET wet_bulb_temp_trend = (
             SELECT AVG(wet_bulb_temperature)
             FROM readings
-            WHERE timestamp > datetime(trend_6h.bucket_timestamp, '-360 minutes')
+            WHERE timestamp > strftime('%Y-%m-%dT%H:%M:%S', trend_6h.bucket_timestamp, '-360 minutes')
               AND timestamp <= trend_6h.bucket_timestamp
         )
         WHERE wet_bulb_temp_trend IS NULL
@@ -432,3 +432,17 @@ def backfill_wet_bulb_trends():
     conn.commit()
     conn.close()
     return count
+
+
+def recompute_wet_bulb_rollups_trends():
+    conn = get_conn()
+    c = conn.cursor()
+    c.execute("UPDATE rollup_30m SET wet_bulb_temp_avg = NULL")
+    rollup_count = c.rowcount
+    c.execute("UPDATE trend_6h SET wet_bulb_temp_trend = NULL")
+    trend_count = c.rowcount
+    conn.commit()
+    conn.close()
+    backfill_wet_bulb_rollups()
+    backfill_wet_bulb_trends()
+    return rollup_count, trend_count

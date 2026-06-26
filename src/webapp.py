@@ -368,9 +368,13 @@ function switchTab(tabId) {
 }
 
 function getBounds(values, fallbackMin, fallbackMax) {
-    if (!values.length) return { min: fallbackMin, max: fallbackMax };
-    var min = Math.min.apply(null, values);
-    var max = Math.max.apply(null, values);
+    var filtered = [];
+    for (var i = 0; i < values.length; i++) {
+        if (values[i] != null) filtered.push(values[i]);
+    }
+    if (!filtered.length) return { min: fallbackMin, max: fallbackMax };
+    var min = Math.min.apply(null, filtered);
+    var max = Math.max.apply(null, filtered);
     var pad = Math.max((max - min) * 0.1, 0.5);
     return { min: min - pad, max: max + pad };
 }

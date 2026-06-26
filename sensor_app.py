@@ -1,15 +1,14 @@
 from threading import Thread
 
 from src.database import init_db
-from src.models import backfill_rollups, backfill_trends, backfill_wet_bulb_readings, backfill_wet_bulb_rollups, backfill_wet_bulb_trends
+from src.models import backfill_rollups, backfill_trends, backfill_wet_bulb_readings, recompute_wet_bulb_rollups_trends
 from src.recorder import sensor_loop
 from src.webapp import app
 
 if __name__ == "__main__":
     init_db()
     backfill_wet_bulb_readings()
-    backfill_wet_bulb_rollups()
-    backfill_wet_bulb_trends()
+    recompute_wet_bulb_rollups_trends()
     backfill_rollups()
     backfill_trends()
     Thread(target=sensor_loop, daemon=True).start()
