@@ -48,6 +48,16 @@ def init_db():
         )
     """)
 
+    for col_def in [
+        "ALTER TABLE readings ADD COLUMN wet_bulb_temperature REAL",
+        "ALTER TABLE rollup_30m ADD COLUMN wet_bulb_temp_avg REAL",
+        "ALTER TABLE trend_6h ADD COLUMN wet_bulb_temp_trend REAL",
+    ]:
+        try:
+            c.execute(col_def)
+        except sqlite3.OperationalError:
+            pass
+
     c.execute("CREATE INDEX IF NOT EXISTS idx_readings_timestamp ON readings(timestamp)")
     c.execute("PRAGMA journal_mode=WAL;")
     conn.commit()

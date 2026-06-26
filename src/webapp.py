@@ -28,6 +28,7 @@ HTML = r"""
             --green: #22c55e;
             --pink: #ec4899;
             --teal: #14b8a6;
+            --teal: #14b8a6;
             --purple: #a855f7;
             --yellow: #eab308;
         }
@@ -246,6 +247,27 @@ HTML = r"""
                 <div class="chart-subtitle">Per-day min, quartiles, max, and mean</div>
             </div>
             <div id="humDailyPlot" class="plot"></div>
+        </div>
+        <div class="chart-box">
+            <div class="chart-header">
+                <h2>Wet Bulb Temperature &mdash; Last 24 Hours</h2>
+                <div class="chart-subtitle">All 1-minute readings with 3-day average overlay</div>
+            </div>
+            <div id="wbRawPlot" class="plot"></div>
+        </div>
+        <div class="chart-box">
+            <div class="chart-header">
+                <h2>Wet Bulb Temperature &mdash; 30-Minute Averages by Day</h2>
+                <div class="chart-subtitle">One line per calendar day</div>
+            </div>
+            <div id="wbAvgPlot" class="plot"></div>
+        </div>
+        <div class="chart-box">
+            <div class="chart-header">
+                <h2>Wet Bulb Temperature &mdash; Daily Distribution</h2>
+                <div class="chart-subtitle">Per-day min, quartiles, max, and mean</div>
+            </div>
+            <div id="wbDailyPlot" class="plot"></div>
         </div>
     </div>
 
@@ -526,6 +548,7 @@ function makeRawTrace(x, y, color, name, unit) {
 var RAW_PLOTS = [
     { id: 'tempRawPlot', metric: 'temperature', color: '#ef4444', name: 'Temperature', unit: 'C', fallback: [0, 50] },
     { id: 'humRawPlot',  metric: 'humidity',    color: '#3b82f6', name: 'Humidity',    unit: '%', fallback: [0, 100] },
+    { id: 'wbRawPlot',   metric: 'wet_bulb_temperature', color: '#14b8a6', name: 'Wet Bulb', unit: 'C', fallback: [-10, 40] },
     { id: 'vocRawPlot',  metric: 'voc_index',   color: '#f59e0b', name: 'VOC Index',  unit: '',  fallback: [0, 500] },
     { id: 'noxRawPlot',  metric: 'nox_index',   color: '#a855f7', name: 'NOx Index',  unit: '',  fallback: [0, 500] },
     { id: 'lightRawPlot',metric: 'ambient_light',color: '#eab308', name: 'Light',      unit: 'lx', fallback: [0, 1000] },
@@ -534,6 +557,7 @@ var RAW_PLOTS = [
 var AVG_PLOTS = [
     { id: 'tempAvgPlot',  rollupKey: 'temperature_avg', color: '#f59e0b', label: '30m Avg Temp (C)', fallback: [0, 50] },
     { id: 'humAvgPlot',   rollupKey: 'humidity_avg',    color: '#06b6d4', label: '30m Avg Humidity (%)', fallback: [0, 100] },
+    { id: 'wbAvgPlot',    rollupKey: 'wet_bulb_temp_avg', color: '#14b8a6', label: '30m Avg Wet Bulb (C)', fallback: [-10, 40] },
     { id: 'vocAvgPlot',   rollupKey: 'voc_avg',          color: '#f59e0b', label: '30m Avg VOC Index', fallback: [0, 500] },
     { id: 'noxAvgPlot',   rollupKey: 'nox_avg',          color: '#a855f7', label: '30m Avg NOx Index', fallback: [0, 500] },
     { id: 'lightAvgPlot', rollupKey: 'light_avg',         color: '#eab308', label: '30m Avg Light (lx)', fallback: [0, 1000] },
@@ -542,6 +566,7 @@ var AVG_PLOTS = [
 var DAILY_PLOTS = [
     { id: 'tempDailyPlot',  metric: 'temperature', color: '#ef4444', name: 'Temperature', unit: 'C', fallback: [0, 50] },
     { id: 'humDailyPlot',   metric: 'humidity',    color: '#3b82f6', name: 'Humidity',    unit: '%', fallback: [0, 100] },
+    { id: 'wbDailyPlot',    metric: 'wet_bulb_temperature', color: '#14b8a6', name: 'Wet Bulb', unit: 'C', fallback: [-10, 40] },
     { id: 'vocDailyPlot',   metric: 'voc_index',   color: '#f59e0b', name: 'VOC Index',  unit: '',  fallback: [0, 500] },
     { id: 'noxDailyPlot',   metric: 'nox_index',   color: '#a855f7', name: 'NOx Index',  unit: '',  fallback: [0, 500] },
     { id: 'lightDailyPlot', metric: 'ambient_light',color: '#eab308', name: 'Light',      unit: 'lx', fallback: [0, 1000] },

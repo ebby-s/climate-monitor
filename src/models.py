@@ -1,3 +1,4 @@
+import math
 import statistics
 from datetime import datetime, timedelta
 
@@ -8,28 +9,43 @@ from src.database import (
 )
 
 METRIC_COLS = [
-    "temperature", "humidity", "voc_index", "nox_index", "ambient_light"
+    "temperature", "humidity", "voc_index", "nox_index", "ambient_light", "wet_bulb_temperature"
 ]
 
 AVG_COLS = [
-    "temperature_avg", "humidity_avg", "voc_avg", "nox_avg", "light_avg"
+    "temperature_avg", "humidity_avg", "voc_avg", "nox_avg", "light_avg", "wet_bulb_temp_avg"
 ]
 
 TREND_COLS = [
-    "temperature_trend", "humidity_trend", "voc_trend", "nox_trend", "light_trend"
+    "temperature_trend", "humidity_trend", "voc_trend", "nox_trend", "light_trend", "wet_bulb_temp_trend"
 ]
+
+
+def compute_wet_bulb(temperature, humidity):
+    if temperature is None or humidity is None:
+        return None
+    t = temperature
+    rh = humidity
+    rh = max(0, min(100, rh))
+    tw = (t * math.atan(0.151977 * math.sqrt(rh + 8.313659))
+          + math.atan(t + rh)
+          - math.atan(rh - 1.676331)
+          + 0.00391838 * (rh ** 1.5) * math.atan(0.023101 * rh)
+          - 4.686035)
+    return tw
 
 
 def save_reading(data):
     ts = now_iso()
+    wb = compute_wet_bulb(data.get("temperature"), data.get("humidity"))
     conn = get_conn()
     c = conn.cursor()
     c.execute(
         """INSERT INTO readings
-           (timestamp, temperature, humidity, voc_index, nox_index, ambient_light)
-           VALUES (?, ?, ?, ?, ?, ?)""",
+           (timestamp, temperature, humidity, voc_index, nox_index, ambient_light, wet_bulb_temperature)
+           VALUES (?, ?, ?, ?, ?, ?, ?)""",
         (ts, data["temperature"], data["humidity"],
-         data["voc_index"], data["nox_index"], data["ambient_light"])
+         data["voc_index"], data["nox_index"], data["ambient_light"], wb)
     )
     conn.commit()
     conn.close()
@@ -45,7 +61,8 @@ def _compute_window_average(bucket_dt, window_minutes):
     c = conn.cursor()
     c.execute("""
         SELECT AVG(temperature), AVG(humidity),
-               AVG(voc_index), AVG(nox_index), AVG(ambient_light)
+               AVG(voc_index), AVG(nox_index), AVG(ambient_light),
+               AVG(wet_bulb_temperature)
         FROM readings
         WHERE timestamp > ? AND timestamp <= ?
     """, (start_iso, bucket_iso))
@@ -59,6 +76,7 @@ def _compute_window_average(bucket_dt, window_minutes):
             "voc_avg": row[2],
             "nox_avg": row[3],
             "light_avg": row[4],
+            "wet_bulb_temp_avg": row[5],
         }
     return None
 
@@ -77,16 +95,18 @@ def _upsert_rollup(bucket_dt, avgs):
     c = conn.cursor()
     c.execute("""
         INSERT INTO rollup_30m
-            (bucket_timestamp, temperature_avg, humidity_avg, voc_avg, nox_avg, light_avg)
-        VALUES (?, ?, ?, ?, ?, ?)
+            (bucket_timestamp, temperature_avg, humidity_avg, voc_avg, nox_avg, light_avg, wet_bulb_temp_avg)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(bucket_timestamp) DO UPDATE SET
             temperature_avg = excluded.temperature_avg,
             humidity_avg = excluded.humidity_avg,
             voc_avg = excluded.voc_avg,
             nox_avg = excluded.nox_avg,
-            light_avg = excluded.light_avg
+            light_avg = excluded.light_avg,
+            wet_bulb_temp_avg = excluded.wet_bulb_temp_avg
     """, (bucket_iso, avgs["temperature_avg"], avgs["humidity_avg"],
-          avgs["voc_avg"], avgs["nox_avg"], avgs["light_avg"]))
+          avgs["voc_avg"], avgs["nox_avg"], avgs["light_avg"],
+          avgs["wet_bulb_temp_avg"]))
     conn.commit()
     conn.close()
 
@@ -98,16 +118,18 @@ def _upsert_trend(bucket_dt, avgs):
     c.execute("""
         INSERT INTO trend_6h
             (bucket_timestamp, temperature_trend, humidity_trend,
-             voc_trend, nox_trend, light_trend)
-        VALUES (?, ?, ?, ?, ?, ?)
+             voc_trend, nox_trend, light_trend, wet_bulb_temp_trend)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(bucket_timestamp) DO UPDATE SET
             temperature_trend = excluded.temperature_trend,
             humidity_trend = excluded.humidity_trend,
             voc_trend = excluded.voc_trend,
             nox_trend = excluded.nox_trend,
-            light_trend = excluded.light_trend
+            light_trend = excluded.light_trend,
+            wet_bulb_temp_trend = excluded.wet_bulb_temp_trend
     """, (bucket_iso, avgs["temperature_avg"], avgs["humidity_avg"],
-          avgs["voc_avg"], avgs["nox_avg"], avgs["light_avg"]))
+          avgs["voc_avg"], avgs["nox_avg"], avgs["light_avg"],
+          avgs["wet_bulb_temp_avg"]))
     conn.commit()
     conn.close()
 
@@ -175,7 +197,7 @@ def get_recent_readings(limit):
     conn = get_conn()
     c = conn.cursor()
     c.execute("""
-        SELECT timestamp, temperature, humidity, voc_index, nox_index, ambient_light
+        SELECT timestamp, temperature, humidity, voc_index, nox_index, ambient_light, wet_bulb_temperature
         FROM readings
         ORDER BY id DESC
         LIMIT ?
@@ -191,6 +213,7 @@ def get_recent_readings(limit):
             "voc_index": r[3],
             "nox_index": r[4],
             "ambient_light": r[5],
+            "wet_bulb_temperature": r[6],
         }
         for r in rows
     ]
@@ -201,7 +224,7 @@ def get_rollups():
     c = conn.cursor()
     c.execute("""
         SELECT bucket_timestamp, temperature_avg, humidity_avg,
-               voc_avg, nox_avg, light_avg
+               voc_avg, nox_avg, light_avg, wet_bulb_temp_avg
         FROM rollup_30m
         ORDER BY bucket_timestamp ASC
     """)
@@ -215,6 +238,7 @@ def get_rollups():
             "voc_avg": r[3],
             "nox_avg": r[4],
             "light_avg": r[5],
+            "wet_bulb_temp_avg": r[6],
         }
         for r in rows
     ]
@@ -225,7 +249,7 @@ def get_trends():
     c = conn.cursor()
     c.execute("""
         SELECT bucket_timestamp, temperature_trend, humidity_trend,
-               voc_trend, nox_trend, light_trend
+               voc_trend, nox_trend, light_trend, wet_bulb_temp_trend
         FROM trend_6h
         ORDER BY bucket_timestamp ASC
     """)
@@ -239,6 +263,7 @@ def get_trends():
             "voc_trend": r[3],
             "nox_trend": r[4],
             "light_trend": r[5],
+            "wet_bulb_temp_trend": r[6],
         }
         for r in rows
     ]
@@ -270,7 +295,8 @@ def get_prev3day_profile():
     c.execute("""
         SELECT substr(timestamp, 12, 5) as time_of_day,
                AVG(temperature), AVG(humidity),
-               AVG(voc_index), AVG(nox_index), AVG(ambient_light)
+               AVG(voc_index), AVG(nox_index), AVG(ambient_light),
+               AVG(wet_bulb_temperature)
         FROM readings
         WHERE timestamp >= ? AND timestamp < ?
         GROUP BY time_of_day
@@ -287,6 +313,7 @@ def get_prev3day_profile():
             "voc_index": r[3],
             "nox_index": r[4],
             "ambient_light": r[5],
+            "wet_bulb_temperature": r[6],
         }
         result.append(entry)
     return result
@@ -297,7 +324,7 @@ def get_daily_stats():
     c = conn.cursor()
     c.execute("""
         SELECT date(timestamp) as day,
-               temperature, humidity, voc_index, nox_index, ambient_light
+               temperature, humidity, voc_index, nox_index, ambient_light, wet_bulb_temperature
         FROM readings
         ORDER BY timestamp ASC
     """)
@@ -314,12 +341,13 @@ def get_daily_stats():
                 "voc_index": [],
                 "nox_index": [],
                 "ambient_light": [],
+                "wet_bulb_temperature": [],
             }
-        for i, key in enumerate(["temperature", "humidity", "voc_index", "nox_index", "ambient_light"], 1):
+        for i, key in enumerate(["temperature", "humidity", "voc_index", "nox_index", "ambient_light", "wet_bulb_temperature"], 1):
             if r[i] is not None:
                 days[day][key].append(r[i])
 
-    METRICS = ["temperature", "humidity", "voc_index", "nox_index", "ambient_light"]
+    METRICS = ["temperature", "humidity", "voc_index", "nox_index", "ambient_light", "wet_bulb_temperature"]
 
     result = {}
     for day in sorted(days.keys()):
@@ -349,3 +377,58 @@ def get_daily_stats():
                     "mean": sum(svals) / len(svals),
                 }
     return result
+
+
+def backfill_wet_bulb_readings():
+    conn = get_conn()
+    c = conn.cursor()
+    c.execute("SELECT id, temperature, humidity FROM readings WHERE wet_bulb_temperature IS NULL")
+    rows = c.fetchall()
+    if not rows:
+        conn.close()
+        return 0
+    updates = []
+    for row in rows:
+        wb = compute_wet_bulb(row[1], row[2])
+        updates.append((wb, row[0]))
+    c.executemany("UPDATE readings SET wet_bulb_temperature = ? WHERE id = ?", updates)
+    conn.commit()
+    count = len(updates)
+    conn.close()
+    return count
+
+
+def backfill_wet_bulb_rollups():
+    conn = get_conn()
+    c = conn.cursor()
+    c.execute("""
+        UPDATE rollup_30m SET wet_bulb_temp_avg = (
+            SELECT AVG(wet_bulb_temperature)
+            FROM readings
+            WHERE timestamp > datetime(rollup_30m.bucket_timestamp, '-30 minutes')
+              AND timestamp <= rollup_30m.bucket_timestamp
+        )
+        WHERE wet_bulb_temp_avg IS NULL
+    """)
+    count = c.rowcount
+    conn.commit()
+    conn.close()
+    return count
+
+
+def backfill_wet_bulb_trends():
+    conn = get_conn()
+    c = conn.cursor()
+    c.execute("""
+        UPDATE trend_6h SET wet_bulb_temp_trend = (
+            SELECT AVG(wet_bulb_temperature)
+            FROM readings
+            WHERE timestamp > datetime(trend_6h.bucket_timestamp, '-360 minutes')
+              AND timestamp <= trend_6h.bucket_timestamp
+        )
+        WHERE wet_bulb_temp_trend IS NULL
+    """)
+    count = c.rowcount
+    conn.commit()
+    conn.close()
+    return count

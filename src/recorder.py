@@ -1,7 +1,7 @@
 import time
 
 from src.sensors import SensorReader
-from src.models import save_reading, maybe_update_rollup
+from src.models import save_reading, maybe_update_rollup, compute_wet_bulb
 
 
 def sensor_loop():
@@ -18,6 +18,9 @@ def sensor_loop():
                 parts.append(f"{data['temperature']}C")
             if data["humidity"] is not None:
                 parts.append(f"{data['humidity']}%")
+            wb = compute_wet_bulb(data.get("temperature"), data.get("humidity"))
+            if wb is not None:
+                parts.append(f"WB:{wb:.1f}C")
             if data["voc_index"] is not None:
                 parts.append(f"VOC:{data['voc_index']:.0f}")
             if data["nox_index"] is not None:
