@@ -8,4 +8,4 @@ if __name__ == "__main__":
     recompute_wet_bulb_rollups_trends()
     backfill_rollups()
     backfill_trends()
-    app.run(host="0.0.0.0", port=5000)
+    app.run(host="0.0.0.0", port=5000, threaded=True)

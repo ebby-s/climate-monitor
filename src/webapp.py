@@ -1,9 +1,208 @@
-from flask import Flask, render_template_string, jsonify
+import gzip
+import hashlib
+import json
+import os
+import subprocess
+import threading
+import time
 
-from src.models import get_recent_readings, get_rollups, get_trends, get_total_count, get_prev3day_profile, get_daily_stats
-from src.config import RECENT_LIMIT
+from flask import Flask, render_template_string, jsonify, request, Response
+
+from src.models import (
+    get_recent_readings, get_rollups, get_total_count,
+    get_prev3day_profile, get_daily_stats, get_latest_reading,
+)
+from src.config import RECENT_LIMIT, DB_PATH
 
 app = Flask(__name__)
+
+DATA_CACHE_TTL_SECONDS = 30
+LATEST_CACHE_TTL_SECONDS = 5
+
+ROLLUP_VALUE_COLS = [
+    "temperature_avg", "humidity_avg", "voc_avg", "nox_avg",
+    "light_avg", "wet_bulb_temp_avg",
+]
+
+_data_cache = {"key": None, "json_bytes": None, "gzipped": None, "etag": None}
+_latest_cache = {"key": None, "body": None}
+_data_lock = threading.Lock()
+_data_rebuilding = False
+
+HOTSPOT_CON = "Hotspot"
+HOTSPOT_IF = "wlan1"
+
+
+def _run(cmd, timeout=20):
+    return subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+
+
+def hotspot_state():
+    st = _run(["sudo", "-n", "nmcli", "-t", "-f", "GENERAL.STATE", "device", "show", HOTSPOT_IF])
+    if st.returncode != 0:
+        return "off"
+    connected = "100 (connected)" in st.stdout
+    if not connected:
+        return "off"
+    band = _run(["sudo", "-n", "nmcli", "-t", "-f", "802-11-wireless.band", "connection", "show", HOTSPOT_CON])
+    if band.returncode != 0:
+        return "5g"
+    return "2.4g" if "bg" in band.stdout else "5g"
+
+
+def hotspot_set(mode):
+    if mode == "off":
+        _run(["sudo", "-n", "nmcli", "connection", "down", HOTSPOT_CON])
+    elif mode == "2.4g":
+        _run(["sudo", "-n", "nmcli", "connection", "down", HOTSPOT_CON], timeout=10)
+        _run(["sudo", "-n", "nmcli", "connection", "modify", HOTSPOT_CON,
+              "802-11-wireless.band", "bg",
+              "802-11-wireless.channel", "6",
+              "802-11-wireless.channel-width", "20"])
+        _run(["sudo", "-n", "nmcli", "connection", "up", HOTSPOT_CON], timeout=30)
+    elif mode == "5g":
+        _run(["sudo", "-n", "nmcli", "connection", "down", HOTSPOT_CON], timeout=10)
+        _run(["sudo", "-n", "nmcli", "connection", "modify", HOTSPOT_CON,
+              "802-11-wireless.band", "a",
+              "802-11-wireless.channel", "36",
+              "802-11-wireless.channel-width", "80"])
+        _run(["sudo", "-n", "nmcli", "connection", "up", HOTSPOT_CON], timeout=30)
+    else:
+        return False
+    return True
+
+
+def _db_stamp():
+    try:
+        return os.path.getmtime(DB_PATH)
+    except OSError:
+        return None
+
+
+def _round_floats(obj):
+    if isinstance(obj, float):
+        return round(obj, 2)
+    if isinstance(obj, list):
+        return [_round_floats(x) for x in obj]
+    if isinstance(obj, dict):
+        return {k: _round_floats(v) for k, v in obj.items()}
+    return obj
+
+
+def _aggregate_rollups_30m(rollups):
+    """Collapse 5-minute rollup rows (trailing 30-min averages) into true
+    30-minute buckets by averaging the overlapping samples in each bucket."""
+    def bucket_key(ts):
+        minute = int(ts[14:16])
+        return ts[:14] + ("00" if minute < 30 else "30") + ":00"
+
+    out = []
+    current_key = None
+    sums = {}
+    counts = {}
+
+    def emit(key):
+        row = {"timestamp": key}
+        for col in ROLLUP_VALUE_COLS:
+            n = counts.get(col, 0)
+            row[col] = round(sums[col] / n, 2) if n else None
+        return row
+
+    for r in rollups:
+        key = bucket_key(r["timestamp"])
+        if key != current_key:
+            if current_key is not None:
+                out.append(emit(current_key))
+            current_key = key
+            sums = {}
+            counts = {}
+        for col in ROLLUP_VALUE_COLS:
+            v = r[col]
+            if v is None:
+                continue
+            sums[col] = sums.get(col, 0.0) + v
+            counts[col] = counts.get(col, 0) + 1
+    if current_key is not None:
+        out.append(emit(current_key))
+    return out
+
+
+def _build_data_payload():
+    payload = {
+        "total_count": get_total_count(),
+        "recent_readings": get_recent_readings(RECENT_LIMIT),
+        "rollups": _aggregate_rollups_30m(get_rollups()),
+        "prev3day_profile": get_prev3day_profile(),
+        "daily_stats": get_daily_stats(),
+    }
+    return _round_floats(payload)
+
+
+def _store_data_cache(key, json_bytes):
+    etag = '"' + hashlib.sha1(json_bytes).hexdigest()[:20] + '"'
+    with _data_lock:
+        _data_cache["key"] = key
+        _data_cache["json_bytes"] = json_bytes
+        _data_cache["gzipped"] = gzip.compress(json_bytes, 6)
+        _data_cache["etag"] = etag
+        global _data_rebuilding
+        _data_rebuilding = False
+
+
+def _rebuild_data_async(key):
+    def worker():
+        try:
+            _store_data_cache(key, json.dumps(_build_data_payload()).encode("utf-8"))
+        except Exception as e:
+            with _data_lock:
+                global _data_rebuilding
+                _data_rebuilding = False
+            app.logger.error("Data cache rebuild failed: %s", e)
+
+    threading.Thread(target=worker, daemon=True).start()
+
+
+def _cached_data():
+    global _data_rebuilding
+    stamp = _db_stamp()
+    key = (stamp, int(time.time() // DATA_CACHE_TTL_SECONDS))
+    with _data_lock:
+        if _data_cache["key"] == key and not _data_rebuilding:
+            return dict(_data_cache)
+        have_stale = _data_cache["json_bytes"] is not None
+
+    if have_stale:
+        if not _data_rebuilding:
+            with _data_lock:
+                start = not _data_rebuilding
+                _data_rebuilding = True
+            if start:
+                _rebuild_data_async(key)
+        return dict(_data_cache)
+
+    with _data_lock:
+        _data_rebuilding = True
+    try:
+        _store_data_cache(key, json.dumps(_build_data_payload()).encode("utf-8"))
+    except Exception:
+        with _data_lock:
+            _data_rebuilding = False
+        raise
+    return dict(_data_cache)
+
+
+def _cached_latest():
+    stamp = _db_stamp()
+    key = (stamp, int(time.time() // LATEST_CACHE_TTL_SECONDS))
+    if _latest_cache["key"] == key:
+        return _latest_cache["body"]
+    body = jsonify({
+        "total_count": get_total_count(),
+        "latest": _round_floats(get_latest_reading()),
+    })
+    _latest_cache["key"] = key
+    _latest_cache["body"] = body
+    return body
 
 HTML = r"""
 <!DOCTYPE html>
@@ -162,6 +361,71 @@ HTML = r"""
             color: var(--muted);
             font-size: 13px;
         }
+
+        .hotspot-panel {
+            background: rgba(17, 24, 39, 0.95);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 16px 18px;
+            margin-bottom: 24px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            flex-wrap: wrap;
+            gap: 12px;
+        }
+        .hotspot-label {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-size: 14px;
+        }
+        .hotspot-label h3 {
+            margin: 0;
+            font-size: 13px;
+            color: var(--muted);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        .hotspot-status {
+            font-size: 14px;
+            font-weight: 600;
+            color: var(--muted);
+        }
+        .hotspot-status.on { color: var(--green); }
+        .toggle-group {
+            display: inline-flex;
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            overflow: hidden;
+        }
+        .toggle-btn {
+            padding: 9px 16px;
+            border: none;
+            background: var(--panel2);
+            color: var(--muted);
+            cursor: pointer;
+            font-size: 13px;
+            border-radius: 0;
+            transition: background 0.15s, color 0.15s;
+        }
+        .toggle-btn + .toggle-btn {
+            border-left: 1px solid var(--border);
+        }
+        .toggle-btn:hover:not(.active):not(:disabled) {
+            filter: brightness(1.2);
+            color: var(--text);
+        }
+        .toggle-btn.active {
+            font-weight: 600;
+        }
+        .toggle-btn.active.off  { background: #7f1d1d; color: #fecaca; }
+        .toggle-btn.active.g24  { background: #1e3a8a; color: #bfdbfe; }
+        .toggle-btn.active.g5   { background: #14532d; color: #bbf7d0; }
+        .toggle-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
     </style>
 </head>
 <body>
@@ -170,6 +434,18 @@ HTML = r"""
     <div class="subtitle">
         <span class="status-dot"></span>
         SHT-41 &middot; SGP41 &middot; VEML 7700 &middot; Recording every minute
+    </div>
+
+    <div class="hotspot-panel">
+        <div class="hotspot-label">
+            <h3>WiFi Hotspot</h3>
+            <span class="hotspot-status" id="hotspotStatus">--</span>
+        </div>
+        <div class="toggle-group" id="hotspotToggle">
+            <button class="toggle-btn off" data-mode="off" onclick="setHotspot('off')">Off</button>
+            <button class="toggle-btn g24" data-mode="2.4g" onclick="setHotspot('2.4g')">2.4 GHz</button>
+            <button class="toggle-btn g5"  data-mode="5g"   onclick="setHotspot('5g')">5 GHz</button>
+        </div>
     </div>
 
     <div class="cards">
@@ -727,8 +1003,76 @@ function loadData() {
         .catch(function(err) { console.error('Failed to load data:', err); });
 }
 
-loadData();
-setInterval(loadData, 60000);
+function applyLatest(d) {
+    document.getElementById('pointCount').textContent = d.total_count;
+    var latest = d.latest;
+    if (!latest) return;
+    document.getElementById('latestTemp').textContent =
+        latest.temperature != null ? Number(latest.temperature).toFixed(1) + ' C' : '--';
+    document.getElementById('latestHum').textContent =
+        latest.humidity != null ? Number(latest.humidity).toFixed(1) + ' %' : '--';
+    document.getElementById('latestVoc').textContent =
+        latest.voc_index != null ? Number(latest.voc_index).toFixed(0) : '--';
+    document.getElementById('latestNox').textContent =
+        latest.nox_index != null ? Number(latest.nox_index).toFixed(0) : '--';
+    document.getElementById('latestLight').textContent =
+        latest.ambient_light != null ? Number(latest.ambient_light).toFixed(1) + ' lx' : '--';
+}
+
+function loadLatest() {
+    fetch('/latest')
+        .then(function(r) { return r.json(); })
+        .then(applyLatest)
+        .catch(function(err) { console.error('Failed to load latest:', err); });
+}
+
+function refreshAll() {
+    loadLatest();
+    loadData();
+}
+
+refreshAll();
+setInterval(refreshAll, 60000);
+
+var HOTSPOT_LABELS = { off: 'Off', '2.4g': '2.4 GHz \u2014 Compat', '5g': '5 GHz \u2014 Speed' };
+var _hotspotBusy = false;
+
+function refreshHotspotUI(state) {
+    document.getElementById('hotspotStatus').textContent = HOTSPOT_LABELS[state] || '--';
+    document.getElementById('hotspotStatus').className = 'hotspot-status ' + (state === 'off' ? '' : 'on');
+    document.querySelectorAll('#hotspotToggle .toggle-btn').forEach(function(btn) {
+        btn.classList.toggle('active', btn.dataset.mode === state);
+    });
+}
+
+function loadHotspot() {
+    fetch('/api/hotspot').then(function(r) { return r.json(); }).then(function(d) {
+        refreshHotspotUI(d.state);
+    }).catch(function() {});
+}
+
+function setHotspot(mode) {
+    if (_hotspotBusy) return;
+    _hotspotBusy = true;
+    document.querySelectorAll('#hotspotToggle .toggle-btn').forEach(function(btn) {
+        btn.disabled = true;
+    });
+    document.getElementById('hotspotStatus').textContent = 'Switching\u2026';
+    fetch('/api/hotspot/' + mode, { method: 'POST' })
+        .then(function(r) { return r.json(); })
+        .then(function(d) { refreshHotspotUI(d.state); })
+        .catch(function() { document.getElementById('hotspotStatus').textContent = 'Error'; })
+        .finally(function() {
+            _hotspotBusy = false;
+            document.querySelectorAll('#hotspotToggle .toggle-btn').forEach(function(btn) {
+                btn.disabled = false;
+            });
+            setTimeout(loadHotspot, 3000);
+        });
+}
+
+loadHotspot();
+setInterval(loadHotspot, 10000);
 </script>
 </body>
 </html>
@@ -742,14 +1086,37 @@ def index():
 
 @app.route("/data")
 def data():
-    return jsonify({
-        "total_count": get_total_count(),
-        "recent_readings": get_recent_readings(RECENT_LIMIT),
-        "rollups": get_rollups(),
-        "trends": get_trends(),
-        "prev3day_profile": get_prev3day_profile(),
-        "daily_stats": get_daily_stats(),
-    })
+    cached = _cached_data()
+    etag = cached["etag"]
+
+    inm = request.headers.get("If-None-Match", "")
+    if any(t.strip().lstrip("W/") == etag for t in inm.split(",") if t.strip()):
+        resp = Response(status=304)
+    elif "gzip" in request.headers.get("Accept-Encoding", ""):
+        resp = Response(cached["gzipped"], content_type="application/json")
+        resp.headers["Content-Encoding"] = "gzip"
+    else:
+        resp = Response(cached["json_bytes"], content_type="application/json")
+    resp.headers["ETag"] = etag
+    resp.headers["Vary"] = "Accept-Encoding"
+    resp.headers["Cache-Control"] = "no-cache"
+    return resp
+
+
+@app.route("/latest")
+def latest():
+    return _cached_latest()
+
+
+@app.route("/api/hotspot")
+def api_hotspot_status():
+    return jsonify({"state": hotspot_state()})
+
+
+@app.route("/api/hotspot/<mode>", methods=["POST"])
+def api_hotspot_set(mode):
+    ok = hotspot_set(mode)
+    return jsonify({"state": hotspot_state() if ok else hotspot_state(), "ok": ok})
 
 
 

@@ -269,6 +269,31 @@ def get_trends():
     ]
 
 
+def get_latest_reading():
+    conn = get_conn()
+    c = conn.cursor()
+    c.execute("""
+        SELECT timestamp, temperature, humidity, voc_index, nox_index,
+               ambient_light, wet_bulb_temperature
+        FROM readings
+        ORDER BY id DESC
+        LIMIT 1
+    """)
+    r = c.fetchone()
+    conn.close()
+    if not r:
+        return None
+    return {
+        "timestamp": r[0],
+        "temperature": r[1],
+        "humidity": r[2],
+        "voc_index": r[3],
+        "nox_index": r[4],
+        "ambient_light": r[5],
+        "wet_bulb_temperature": r[6],
+    }
+
+
 def get_total_count():
     conn = get_conn()
     c = conn.cursor()
